@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>How To Silicon — Mac Apple Silicon local LLM recipes & context-engine benchmarks</title>
+  <meta name="description" content="Curated picks for running coding agents on Mac Silicon — with and without Ferroclaw context memory engine. Measured tokens, wall time, and survival." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="mark">◆</span>
+      <div>
+        <strong>How To Silicon</strong>
+        <span class="tag">Mac Apple Silicon · local agents</span>
+      </div>
+    </div>
+    <nav>
+      <a href="#picks">Picks</a>
+      <a href="#compare">Engine ON vs OFF</a>
+      <a href="#benchmarks">Benchmarks</a>
+      <a href="#hardware">Hardware</a>
+      <a href="#recipes">Recipes</a>
+      <a href="blog.html">Build log</a>
+      <a href="limit-campaign-report.html">Limit campaign</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <p class="eyebrow">Hardware · Apple Silicon</p>
+      <h1>What’s the best local agent setup on a Mac?</h1>
+      <p class="lede">
+        Curated recipes by goal · measured on real unified-memory machines ·
+        with and without the Ferroclaw <em>context memory</em> harness.
+      </p>
+      <div class="hero-stats">
+        <div class="stat">
+          <span class="k">Envelope</span>
+          <span class="v">32 GB</span>
+          <span class="s">Qwen 35B 4-bit ≈ 19 GB weights</span>
+        </div>
+        <div class="stat">
+          <span class="k">Engine OFF/ON</span>
+          <span class="v">5.12×</span>
+          <span class="s">multiturn prompt tokens (tool bulk)</span>
+        </div>
+        <div class="stat">
+          <span class="k">Wall OFF/ON</span>
+          <span class="v">5.7×</span>
+          <span class="s">same seed, same model</span>
+        </div>
+        <div class="stat">
+          <span class="k">Fact recovery</span>
+          <span class="v">100%</span>
+          <span class="s">mid-file capsule probe</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="hardware" class="panel">
+      <h2>Hardware · Mac Silicon profiles</h2>
+      <div class="cards three">
+        <article class="card">
+          <h3>MacBook Pro 32 GB</h3>
+          <ul class="kv">
+            <li><span>Usable for 35B 4-bit</span><strong>Yes (tight)</strong></li>
+            <li><span>Safe local context</span><strong>~10k tokens</strong></li>
+            <li><span>Usable input (reserves)</span><strong>~8k</strong></li>
+            <li><span>KV headroom</span><strong>~7–8 GB</strong></li>
+          </ul>
+          <p class="note">Primary measurement envelope. Advertised 65k is display-only.</p>
+        </article>
+        <article class="card">
+          <h3>Mac Studio / Pro 64–128 GB</h3>
+          <ul class="kv">
+            <li><span>Larger MoE / denser</span><strong>Comfortable</strong></li>
+            <li><span>Safe context</span><strong>raise profile</strong></li>
+            <li><span>Same laws</span><strong>cache ≠ memory</strong></li>
+          </ul>
+          <p class="note">Same engine; raise <code>safe_context_tokens</code> / target. Disk is still memory.</p>
+        </article>
+        <article class="card">
+          <h3>16 GB Macs</h3>
+          <ul class="kv">
+            <li><span>35B 4-bit</span><strong>Not recommended</strong></li>
+            <li><span>Use</span><strong>smaller 7–14B</strong></li>
+            <li><span>Engine</span><strong>still required</strong></li>
+          </ul>
+          <p class="note">Tool bulk kills 16 GB faster. Externalize earlier; tighter ceilings.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="picks" class="panel">
+      <h2>Curated picks by goal</h2>
+      <p class="sub">Tap through for the full recipe · all measured or reasoned on Apple Silicon</p>
+
+      <div class="picks">
+        <a class="pick featured" href="recipes/mac32-qwen35-engine-on.html">
+          <div class="pick-top">
+            <span class="badge good">Daily driver</span>
+            <span class="mem">~21 GB peak · 32 GB machine</span>
+          </div>
+          <h3>Qwen3.6 35B-A3B-4bit + Ferroclaw context engine ON</h3>
+          <p>
+            Long-horizon coding agent with evidence capsules, turn-safe packing,
+            unlimited tools, pack-and-continue. Multiturn bulk prompt <strong>6.9k tokens</strong>
+            vs 35k engine OFF on the same seed.
+          </p>
+          <div class="pick-meta">
+            <span>1 Mac · 32 GB</span>
+            <span>~8k safe input</span>
+            <span>5.1× fewer tokens</span>
+          </div>
+          <span class="via">via Ferroclaw mac32 + MLX local_qwen</span>
+        </a>
+
+        <a class="pick" href="recipes/mac32-qwen35-engine-off.html">
+          <div class="pick-top">
+            <span class="badge warn">Control arm</span>
+            <span class="mem">same weights · no engine</span>
+          </div>
+          <h3>Same model · context engine OFF</h3>
+          <p>
+            Matched tool seed without externalize. Multiturn prompt <strong>35.3k tokens</strong>,
+            ~129 s wall vs ~23 s ON. Survives short tasks; dies or thrash-costs long audits.
+          </p>
+          <div class="pick-meta">
+            <span>1 Mac · 32 GB</span>
+            <span>unbounded bulk</span>
+            <span>control only</span>
+          </div>
+          <span class="via">for A/B only — not the daily driver</span>
+        </a>
+
+        <a class="pick" href="recipes/long-horizon-audit.html">
+          <div class="pick-top">
+            <span class="badge">Long audit</span>
+            <span class="mem">unlimited tools</span>
+          </div>
+          <h3>Repo audit recipe (orca-class)</h3>
+          <p>
+            Discovery-first list/glob → evidence → progressive completion steers.
+            Full senior-dev report without PARTIAL / tool-budget tombstones.
+          </p>
+          <div class="pick-meta">
+            <span>max_tool_calls_total=0</span>
+            <span>pack + continue</span>
+            <span>completion steers</span>
+          </div>
+          <span class="via">FERROCLAW_HEADLESS=1 ferroclaw exec</span>
+        </a>
+
+        <a class="pick featured" href="limit-campaign-report.html">
+          <div class="pick-top">
+            <span class="badge good">New · 2026-07-21</span>
+            <span class="mem">interactive report</span>
+          </div>
+          <h3>Long-horizon limit campaign · Grok × Qwen 35B</h3>
+          <p>
+            Progressive pad ladder (16k→24k), dogfood monorepo audit, dual-repo Orca vs Hermes.
+            Finding: the ceiling is recovery and tool budget — not raw window size.
+            Pad 24k: <strong>28/28 recall</strong> · dual-repo v2: <strong>4 min pass</strong>.
+          </p>
+          <div class="pick-meta">
+            <span>Gate0 pad ladder</span>
+            <span>dogfood + dual-repo</span>
+            <span>interactive charts</span>
+          </div>
+          <span class="via">open interactive HTML report</span>
+        </a>
+      </div>
+    </section>
+
+    <section id="compare" class="panel">
+      <h2>Context engine · ON vs OFF</h2>
+      <p class="sub">Identical backend · identical tool-heavy seed (~96k chars raw tool bulk)</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Arm</th>
+              <th>Engine</th>
+              <th>Multiturn prompt tok</th>
+              <th>Wall</th>
+              <th>Externalized</th>
+              <th>Fitted est</th>
+              <th>Hello tax</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="on">
+              <td>local_on</td>
+              <td><span class="pill on">ON</span></td>
+              <td><strong>6 889</strong></td>
+              <td>22.7 s</td>
+              <td>12</td>
+              <td>4 400</td>
+              <td>5 797</td>
+            </tr>
+            <tr class="off">
+              <td>local_off</td>
+              <td><span class="pill off">OFF</span></td>
+              <td><strong>35 250</strong></td>
+              <td>128.7 s</td>
+              <td>0</td>
+              <td>24 140</td>
+              <td>5 797</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="callout">
+        <strong>Law:</strong> Context is a cache. Disk is memory. Advertised context is display-only.
+        Tool bulk is the growth term — not user prose.
+      </p>
+      <div class="bars" aria-hidden="true">
+        <div class="bar-row">
+          <span>ON tokens</span>
+          <div class="bar"><i style="width:19.5%"></i></div>
+          <span>6.9k</span>
+        </div>
+        <div class="bar-row">
+          <span>OFF tokens</span>
+          <div class="bar off"><i style="width:100%"></i></div>
+          <span>35.3k</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="benchmarks" class="panel">
+      <h2>Latest benchmarks</h2>
+      <p class="sub">From Ferroclaw harness reports · 2026-07-20</p>
+      <div class="bench-list">
+        <article class="bench">
+          <div class="nums">
+            <div><strong>6.9k</strong><span>tok in</span></div>
+            <div><strong>22.7s</strong><span>wall</span></div>
+            <div><strong>12</strong><span>externalized</span></div>
+          </div>
+          <div class="body">
+            <h3>Qwen3.6 35B-A3B-4bit · Engine ON · multiturn tool bulk</h3>
+            <p>MLX · mac32 profile · hard_local · cpt calibrated → 2.0</p>
+            <span class="chip">spec: matched seed</span>
+            <span class="chip">ctx safe ~10k</span>
+          </div>
+        </article>
+        <article class="bench">
+          <div class="nums">
+            <div><strong>35.3k</strong><span>tok in</span></div>
+            <div><strong>128.7s</strong><span>wall</span></div>
+            <div><strong>0</strong><span>externalized</span></div>
+          </div>
+          <div class="body">
+            <h3>Qwen3.6 35B-A3B-4bit · Engine OFF · same multiturn seed</h3>
+            <p>Control arm · raw tool bulk inline · no hard local ceiling on CM</p>
+            <span class="chip">5.12× tokens</span>
+            <span class="chip">5.7× wall</span>
+          </div>
+        </article>
+        <article class="bench">
+          <div class="nums">
+            <div><strong>100%</strong><span>fact hit</span></div>
+            <div><strong>~1.7k</strong><span>tok ON</span></div>
+            <div><strong>~6.9k</strong><span>tok OFF full</span></div>
+          </div>
+          <div class="body">
+            <h3>Mid-file fact recovery · capsule vs full file</h3>
+            <p>Ground truth <code>FACT 19427</code> survives externalize; model answers from capsule</p>
+            <span class="chip">quality</span>
+            <span class="chip">A8 / ultimate</span>
+          </div>
+        </article>
+        <article class="bench">
+          <div class="nums">
+            <div><strong>20%</strong><span>wire bytes</span></div>
+            <div><strong>12–13</strong><span>core tools</span></div>
+            <div><strong>~1.3k</strong><span>hello (hint)</span></div>
+          </div>
+          <div class="body">
+            <h3>DietMCP / compact wire tools</h3>
+            <p>Full tool JSON tax crushed; WireOnlyHint beats catalog double-tax</p>
+            <span class="chip">schema tax</span>
+          </div>
+        </article>
+        <article class="bench">
+          <div class="nums">
+            <div><strong>0</strong><span>tool budget kill</span></div>
+            <div><strong>full</strong><span>report</span></div>
+            <div><strong>0</strong><span>PARTIAL</span></div>
+          </div>
+          <div class="body">
+            <h3>Orca-coder senior-dev audit · headless</h3>
+            <p>Unlimited tools + pack-continue + progressive completion steers → real report</p>
+            <span class="chip">product</span>
+            <span class="chip">no tombstone</span>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="recipes" class="panel">
+      <h2>Recipe index</h2>
+      <ul class="recipe-index">
+        <li><a href="recipes/mac32-qwen35-engine-on.html">Mac32 · Qwen 35B · engine ON (daily)</a></li>
+        <li><a href="recipes/mac32-qwen35-engine-off.html">Mac32 · Qwen 35B · engine OFF (control)</a></li>
+        <li><a href="recipes/long-horizon-audit.html">Long-horizon repo audit</a></li>
+      </ul>
+    </section>
+
+    <section class="panel thesis">
+      <h2>Thesis</h2>
+      <blockquote>
+        Long-horizon local agents do not fail because 35B models are dumb.
+        They fail because the live prompt is treated as durable memory on
+        hardware that cannot host cloud-sized KV. Disk is the system of record.
+        Context is a cache. Completion is a steer — not a tool-budget tombstone.
+      </blockquote>
+      <p class="sub">
+        Full narrative:
+        <a href="blog.html">Build log</a>
+      <a href="limit-campaign-report.html">Limit campaign</a> ·
+        Desktop markdown: <code>Building-Ferroclaw-Context-Memory-Engine.md</code> ·
+        Repo (private): github.com/austindixson/ferroclaw
+      </p>
+    </section>
+  </main>
+
+  <footer>
+    <p>How To Silicon · inspired by the clarity of howtospark.com · measured on Apple Silicon</p>
+    <p>Ferroclaw context memory · 2026</p>
+  </footer>
+</body>
+</html>

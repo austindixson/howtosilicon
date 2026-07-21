@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Recipe · Mac32 Qwen 35B · Context engine OFF — How To Silicon</title>
+  <link rel="stylesheet" href="../styles.css" />
+</head>
+<body>
+  <main class="prose">
+    <a class="back" href="../index.html">← How To Silicon</a>
+    <p class="eyebrow">Control arm · not the daily driver</p>
+    <h1>Same model · context engine OFF</h1>
+    <p>
+      Matched A/B arm: identical Qwen 35B weights and tool seed, with context
+      memory disabled. Raw tool bulk stays inline. Useful only to measure what
+      the engine buys you.
+    </p>
+
+    <h2>Measured (matched seed)</h2>
+    <ul>
+      <li>Multiturn prompt: <strong>35 250</strong> tokens</li>
+      <li>Wall: <strong>~129 s</strong></li>
+      <li>Externalized: <strong>0</strong></li>
+      <li>Fitted est: ~24k (no hard CM ceiling on dispatch assembly)</li>
+      <li>Ratio vs ON: <strong>5.12× tokens · 5.7× wall</strong></li>
+    </ul>
+
+    <h2>How to run the control</h2>
+    <pre>[context_memory]
+enabled = false
+# or profile = "off"
+
+# Same provider / model as ON arm
+# Same tool seed in harness evals</pre>
+
+    <h2>What fails on long tasks</h2>
+    <ul>
+      <li>Prompt grows with every large read/grep</li>
+      <li>Higher TTFT and decode cost every turn</li>
+      <li>Closer to Metal / KV cliff on multi-hour loops</li>
+      <li>No evidence retrieve path — history is the only memory</li>
+    </ul>
+
+    <p>
+      For daily use see
+      <a href="mac32-qwen35-engine-on.html">engine ON recipe</a>.
+    </p>
+  </main>
+</body>
+</html>

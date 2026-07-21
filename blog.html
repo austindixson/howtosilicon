@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Build log — How To Silicon · Ferroclaw WORKING</title>
+<link rel="stylesheet" href="styles.css"/>
+<style>
+.mdtable { width:100%; border-collapse:collapse; font-size:0.88rem; margin:1rem 0; }
+.mdtable th,.mdtable td { border:1px solid var(--line); padding:0.45rem 0.55rem; vertical-align:top; }
+.mdtable th { color:var(--dim); text-align:left; }
+li { margin-left:1.1rem; color:var(--muted); }
+blockquote { border-left:3px solid var(--line); margin:1rem 0; padding:0.25rem 0 0.25rem 1rem; color:var(--muted); }
+.banner { background:#0d3b2e; color:#b6f5d0; padding:0.75rem 1rem; border-radius:6px; margin:1rem 0; font-weight:600; }
+</style>
+</head>
+<body>
+<article class="prose">
+<p class="banner">WORKING &amp; COMPLETED: orca-coder full senior-dev audit in ~1 minute on local Qwen 35B / Mac32 (ferroclaw 0.3.0 · finalizer · EXIT 0 · no PARTIAL).</p>
+<p style="margin:0.5rem 0 1rem"><a href="index.html">← Home</a> · <a href="limit-campaign-report.html">Limit campaign report (interactive)</a></p>
+<h1>Building a Context/Memory Engine for Long-Horizon Agents on Mac Silicon</h1>
+<p><strong>Subtitle:</strong> Context is a cache. Disk is memory. Advertised context is display-only.  </p>
+<p><strong>Stack:</strong> Ferroclaw (Rust harness) + optional hermes-context-memory MLX quarantine  </p>
+<p><strong>Hardware:</strong> Apple Silicon 32 GB · Qwen3.6-35B-A3B-4bit (MLX)  </p>
+<p><strong>Repo:</strong> <a href="https://github.com/austindixson/ferroclaw">github.com/austindixson/ferroclaw</a> <em>(private)</em>  </p>
+<p><strong>Status date:</strong> 2026-07-20 (updated same day — <strong>WORKING: orca-coder full audit ~1 minute</strong>)  </p>
+<p><strong>Tip of <code>main</code>:</strong> <code>54bbaec</code> (Hermes2-style iteration finalizer)  </p>
+<p>This is the honest build log: original problem, hypotheses, remedies, tests, failures, revised hypotheses, and major successes through orca-coder full audit — <strong>plus critical analysis of product work</strong> (short-task path, stop UX, discovery) — <strong>and the production upgrade that made orca-class audits complete in about one minute</strong> on local Qwen 35B / Mac32.</p>
+<hr/>
+<h2>0. What we were trying to do</h2>
+<p>Run <strong>long, tool-heavy coding agents</strong> on a <strong>local</strong> 35B-class model on a <strong>Mac with 32 GB unified memory</strong>—audits, multi-file discovery, multi-turn tool loops—without:</p>
+<ol><li>Host panics (<code>IOGPUMemory</code> / Metal completeMemory underflow)  </li><li>Silent quality collapse when the prompt “looks fine” but KV is dead  </li><li>Cloud-only crutches (65k advertised context as if it were free)  </li><li>Hard-stopping audits with empty errors or fake <strong>PARTIAL</strong> reports  </li></ol>
+<p>The product name for the harness became <strong>Ferroclaw</strong>. The survival layer became the <strong>context memory engine</strong>. Optional process-level survival on MLX stayed in a <strong>Python package</strong> (<code>hermes-context-memory</code>), deliberately <em>not</em> patching a daily Hermes Agent install.</p>
+<hr/>
+<h2>1. Original problem</h2>
+<h3>Observed failure modes</h3>
+<table class="mdtable">
+<tr><th>Symptom</th><th>What it felt like</th><th>What it actually was</th></tr>
+<tr><td>Agent “dies” mid-audit</td><td>Model stupid / hung</td><td>Prompt + KV outgrew local envelope</td></tr>
+<tr><td><code>completeMemory() prepare count underflow</code></td><td>Random crash</td><td>Metal IOGPU cliff (~weights + KV)</td></tr>
+<tr><td>Quality falls off a cliff late in a session</td><td>Hallucinations</td><td>Context still “fits” textually; protocol or budget already broken</td></tr>
+<tr><td>Empty ERROR stop</td><td>Harness bug</td><td>Budget paths hard-stopped with no artifact</td></tr>
+<tr><td>Invented file paths thrash</td><td>Bad model</td><td>No discovery hygiene; refuse logic false-positives</td></tr>
+<tr><td><strong>PARTIAL / tool budget reached</strong> tombstones</td><td>“Finished”</td><td>Tool counters used as circuit breakers</td></tr>
+</table>
+<h3>Physics (32 GB Mac, Qwen 35B 4-bit)</h3>
+<p>Approximate envelope we treated as law:</p>
+<ul><li>Weights alone ≈ <strong>19 GB</strong>  </li><li>Comfortable Metal working set ≈ <strong>~26–27 GB</strong>  </li><li>Headroom for KV + activations ≈ <strong>7–8 GB</strong>  </li><li>“Advertised 65k context” is <strong>display-only</strong> for local hard budgets  </li></ul>
+<p>Filling an advertised cloud window on this hardware is not a quality experiment—it is a path to host death.</p>
+<hr/>
+<h2>2. Original hypothesis and remedies</h2>
+<h3>North-star theory (became design law)</h3>
+<table class="mdtable">
+<tr><th>#</th><th>Statement</th><th>Remedy</th></tr>
+<tr><td>T1</td><td>Local death is <strong>memory physics</strong>, not model stupidity</td><td>Hard local ceilings; refuse or pack before dispatch</td></tr>
+<tr><td>T2</td><td><strong>Tool bulk</strong> (not chat prose) is the main growth term</td><td>Externalize large tool results → evidence capsules on disk</td></tr>
+<tr><td>T3</td><td><strong>Protocol integrity</strong> is reliability</td><td>Turn-safe eviction; never orphan tool_call / tool_result pairs</td></tr>
+<tr><td>T4</td><td><strong>Harness ownership</strong> beats host patching</td><td>Engine lives in Ferroclaw; Hermes stays stock</td></tr>
+<tr><td>T5</td><td><strong>Schema tax</strong> is fixed cost every turn</td><td>Compact wire tools + WireOnlyHint DietMCP</td></tr>
+</table>
+<h3>First remedies we built</h3>
+<ol><li><strong>Context budget</strong> with three numbers always: advertised / safe_context / usable_input  </li><li><strong>Evidence store</strong> — digests in-prompt, raw on disk, retrieve by id  </li><li><strong>Checkpoints + resume</strong> injected into the <em>user</em> message (not mid-history system spam)  </li><li><strong>MLX quarantine supervisor</strong> (optional) — restart before residency cliff; pressure scale target_input  </li><li><strong>Mac32 profile</strong> — safe_context 10240, target ~6400, hard_local_budget  </li></ol>
+<hr/>
+<h2>3. Test matrix — what we measured</h2>
+<h3>Offline engine (no GPU)</h3>
+<p>From harness reports (<code>LOCAL_LLM_HARNESS_LATEST.md</code>):</p>
+<table class="mdtable">
+<tr><th>Test</th><th>Result</th><th>Meaning</th></tr>
+<tr><td>A1 externalize 50kb tool</td><td>PASS</td><td>Bulk leaves the prompt</td></tr>
+<tr><td>A2 tool-heavy trajectory</td><td>PASS</td><td>~108k raw → fitted ~6100 under ceiling</td></tr>
+<tr><td>A3 turn-safe pairs</td><td>PASS</td><td>No orphan tool pairs</td></tr>
+<tr><td>A4 hard refuse</td><td>PASS</td><td>Oversized protected context refused (later: soft pack)</td></tr>
+<tr><td>A8 mid-file fact capsule</td><td>PASS</td><td><code>FACT 19427</code> survives externalize</td></tr>
+<tr><td>A9 error tail capsule</td><td>PASS</td><td>Error lines kept in capsule</td></tr>
+<tr><td>A10 resume checkpoint</td><td>PASS</td><td>Resume block reconstructible</td></tr>
+</table>
+<h3>Live ON vs OFF (same model, same tool seed)</h3>
+<table class="mdtable">
+<tr><th>Arm</th><th>Multiturn prompt tokens</th><th>Wall time</th><th>Externalized</th></tr>
+<tr><td>Engine <strong>ON</strong></td><td><strong>6 889</strong></td><td>~23 s</td><td>12</td></tr>
+<tr><td>Engine <strong>OFF</strong></td><td><strong>35 250</strong></td><td>~129 s</td><td>0</td></tr>
+</table>
+<p><strong>OFF/ON ≈ 5.12× tokens, ≈ 5.7× wall.</strong>  </p>
+<p>Quality probe: mid-file ground truth recovered at <strong>100%</strong> from capsules (ON) with far fewer input tokens than full-file OFF.</p>
+<h3>Ultimate eval gates</h3>
+<ul><li>Offline corpus recovery <strong>12/12</strong>  </li><li>Tool wire bytes: compact core ≈ <strong>20%</strong> of full tool JSON  </li><li>Live arms gated when GPU available  </li></ul>
+<hr/>
+<h2>4. Failures (load-bearing — do not re-litigate without new data)</h2>
+<h3>F1 — Patch Hermes as the production path</h3>
+<p><strong>Tried:</strong> inject context engine into Hermes Agent via plugins/patches.  </p>
+<p><strong>Failed:</strong> broken daily configs, plugin footguns, “repair install” required.  </p>
+<p><strong>New law:</strong> Ferroclaw owns the harness. Python package = MLX supervisor + reference math only.</p>
+<h3>F2 — Soft compression that gives up</h3>
+<p><strong>Tried:</strong> stop compressing after N ineffective attempts even if still over ceiling.  </p>
+<p><strong>Failed:</strong> oversized prompts still hit the backend → panic risk.  </p>
+<p><strong>New law:</strong> over-budget never disables the gate.</p>
+<h3>F3 — Advertised context as input budget</h3>
+<p><strong>Tried:</strong> use 65k / “safe context” as input target without reserves.  </p>
+<p><strong>Failed:</strong> no room for completion + tools; estimates lied.  </p>
+<p><strong>New law:</strong> usable_input = safe − output_reserve − tool_reserve.</p>
+<h3>F4 — Head/tail digests drop the middle</h3>
+<p><strong>Tried:</strong> naive trim of large tool results.  </p>
+<p><strong>Failed:</strong> lost mid-file facts and error tails.  </p>
+<p><strong>Fix:</strong> smart capsules (markers, paths, error tails). Offline A8/A9 guard this.</p>
+<h3>F5 — DietMCP double-tax</h3>
+<p><strong>Tried:</strong> full tool catalog in system prompt <em>and</em> wire tools[].  </p>
+<p><strong>Failed:</strong> hello tax ~5.8k → compact+WireOnlyHint ~1.3k.  </p>
+<p><strong>Fix:</strong> wire schemas authoritative; catalog off by default on local.</p>
+<h3>F6 — Unfair OFF comparisons</h3>
+<p><strong>Tried:</strong> OFF arm with fewer tools “because legacy.”  </p>
+<p><strong>Failed:</strong> fake quality wins.  </p>
+<p><strong>Fix:</strong> matched tool seed and history bulk for ON vs OFF.</p>
+<h3>F7 — Mid-history system “we compacted” messages</h3>
+<p><strong>Tried:</strong> insert system notices on prune.  </p>
+<p><strong>Failed:</strong> local chat templates break.  </p>
+<p><strong>Fix:</strong> mutate leading system or inject resume in user message.</p>
+<h3>F8 — Orphan tool pairs</h3>
+<p><strong>Tried:</strong> drop oldest messages by token count.  </p>
+<p><strong>Failed:</strong> tool_call without result → hard local failures.  </p>
+<p><strong>Fix:</strong> turn-safe eviction + property tests.</p>
+<h3>F9 — Instruments on a saturated MLX process</h3>
+<p><strong>Tried:</strong> <code>footprint --sample</code> near ceiling.  </p>
+<p><strong>Failed:</strong> tipped host over IOGPU cliff.  </p>
+<p><strong>Fix:</strong> supervisor residency JSON only.</p>
+<h3>F10 — Path / model / OAuth routing</h3>
+<p>GGUF absolute paths, mlx-community ids, Application Support vs <code>~/.config</code> OAuth.  </p>
+<p><strong>Fix:</strong> explicit local profiles + sync scripts.</p>
+<h3>F11 — Thinking mode on tight max_tokens</h3>
+<p><strong>Tried:</strong> Qwen thinking for quality.  </p>
+<p><strong>Failed:</strong> burned completion budget; empty-looking finals.  </p>
+<p><strong>Fix:</strong> <code>enable_thinking = false</code> on Mac32 defaults.</p>
+<h3>F12 — Docs pile as false progress</h3>
+<p>Remotion, glitter-verbs, “COMPLETE” markdown noise.  </p>
+<p><strong>Fix:</strong> keep measured reports + theories log; delete the rest.</p>
+<hr/>
+<h2>5. Product failures on the <em>agent UX</em> path (repair sprint)</h2>
+<p>These came later, while driving real audits (orca-coder, screenshots, TUI).</p>
+<h3>F13 — Discovery thrash / invented modules</h3>
+<p>Model guessed <code>Sources/Foo/Bar.swift</code> paths that never existed.  </p>
+<p><strong>Fix:</strong> DiscoveryTracker — list/glob confirm paths; thrash lock on <strong>true ENOENT only</strong>; soft steers (not red errors).</p>
+<h3>F14 — False REFUSED of real files</h3>
+<p>Lock treated “unconfirmed” as refuse even when file existed.  </p>
+<p><strong>Fix:</strong> <strong>stat before refuse</strong>; existing files auto-confirmed; parent-listed children allowed.</p>
+<h3>F15 — Refuse → path_miss cascade</h3>
+<p>Soft steers counted as misses → lock tightened forever.  </p>
+<p><strong>Fix:</strong> discovery_steer is not path_miss.</p>
+<h3>F16 — Two budgets confused in the UI</h3>
+<p>Run token counter vs CM dispatch ceiling looked like one meter.  </p>
+<p><strong>Fix:</strong> plain-language status: “this turn tokens” vs “prompt % full” + Explore DISC%.</p>
+<h3>F17 — Report cut mid-sentence</h3>
+<p><code>max_tokens</code> 1536 truncated audits.  </p>
+<p><strong>Fix:</strong> floor / config <strong>4096</strong> for finish turns.</p>
+<h3>F18 — Hard refuse “used 10085 of 7783”</h3>
+<p>CM hard-stop empty-handed.  </p>
+<p><strong>Hypothesis then:</strong> always emit <em>something</em>.  </p>
+<p><strong>Bad remedy:</strong> offline <strong>PARTIAL</strong> artifacts + tool-cap soft-finish.  </p>
+<p><strong>User rejection:</strong> “I do not want partial reports, I do not want tool limits.”</p>
+<h3>F19 — PARTIAL / tool-budget tombstones</h3>
+<p><strong>What shipped briefly:</strong> when tool budget or iterations hit, finish with:</p>
+<pre><code>
+# PARTIAL report
+**Reason:** tool budget reached …
+completed_partial:tool_budget
+</code></pre>
+<p><strong>Why it failed product-wise:</strong> looks like completion; is not an audit. Trains the system to quit.  </p>
+<p><strong>Why it failed research-wise:</strong> tool count is not a measure of task completion.</p>
+<hr/>
+<h2>6. New hypothesis after PARTIAL rejection</h2>
+<h3>H-new-1 — Tool count is not a circuit breaker</h3>
+<p><strong>Prediction:</strong> unlimited tools + context packing alone can finish long audits.  </p>
+<p><strong>Partial result:</strong> first re-run listed <strong>250+</strong> directories and never wrote a report (thrash without finish pressure).  </p>
+<p><strong>Revision:</strong> unlimited tools is necessary but not sufficient.</p>
+<h3>H-new-2 — Completion is a <em>steer</em>, not a <em>budget</em></h3>
+<p><strong>Prediction:</strong> progressive report-completion steers (nudge → pack → optional text-only finish attempt) produce a real multi-section report without PARTIAL or tool caps.  </p>
+<p><strong>Result:</strong> <strong>Confirmed</strong> on orca-coder-main (~5 min headless run): full senior-dev report, no PARTIAL, no tool-budget note. Saved as <code>docs/reports/orca-coder-audit.md</code>.</p>
+<h3>H-new-3 — Pack + continue beats pack + quit</h3>
+<p><strong>Prediction:</strong> emergency_collapse under local ceiling should keep the loop alive with full tools (or deliberate text finish), never offline tombstone.  </p>
+<p><strong>Result:</strong> <strong>Implemented permanently</strong> in AgentLoop + ContextMemoryEngine.</p>
+<hr/>
+<h2>7. Successes (chronological, condensed)</h2>
+<table class="mdtable">
+<tr><th>When</th><th>Success</th><th>Evidence</th></tr>
+<tr><td>Early</td><td>Engine ON ≪ OFF tokens</td><td>6889 vs 35250 multiturn</td></tr>
+<tr><td>Early</td><td>Capsule fact recovery 100%</td><td>FACT 19427 probes</td></tr>
+<tr><td>Early</td><td>Tool wire tax crushed</td><td>core ~20% of full bytes</td></tr>
+<tr><td>Mid</td><td>Mac32 profile + MLX quarantine</td><td>soak / residency JSON</td></tr>
+<tr><td>Mid</td><td>Discovery hygiene</td><td>no false refuse of real files</td></tr>
+<tr><td>Mid</td><td>Hermes slate + Awal-inspired chrome</td><td>status bar readable</td></tr>
+<tr><td>Mid</td><td>Soft pack under ceiling</td><td>no empty ERROR on CM pressure</td></tr>
+<tr><td>Late</td><td>Unlimited tools (max_tool_calls_total=0)</td><td>no tool-budget kill switch</td></tr>
+<tr><td>Late</td><td>Progressive completion steers</td><td>real orca audit report</td></tr>
+<tr><td>Late</td><td>407 lib tests green through all of above</td><td><code>cargo test --lib</code></td></tr>
+</table>
+<hr/>
+<h2>8. Architecture that stuck</h2>
+<pre><code>
+User ──▶ Ferroclaw AgentLoop
+              │
+              ├─ DietMCP (compact wire tools)
+              ├─ DiscoveryTracker (list → glob → read hygiene)
+              ├─ ContextMemoryEngine
+              │     ├─ budget + pressure (mac32 envelope)
+              │     ├─ externalize → evidence capsules
+              │     ├─ turn-safe fit / checkpoint / resume
+              │     └─ emergency_collapse → pack + continue
+              ├─ Progressive completion steers (report synthesis)
+              └─ OpenAI-compat provider → local MLX Qwen (:8080)
+                    └─ optional quarantine supervisor
+</code></pre>
+<h3>Runtime knobs (live Mac32-ish)</h3>
+<table class="mdtable">
+<tr><th>Knob</th><th>Value</th><th>Role</th></tr>
+<tr><td><code>max_tool_calls_total</code></td><td><strong>0</strong></td><td>Unlimited lifetime tools</td></tr>
+<tr><td><code>max_iterations</code></td><td>500 (soft)</td><td>Extend / pack / continue</td></tr>
+<tr><td><code>token_budget</code></td><td>500k (soft, expands)</td><td>Not a PARTIAL tombstone</td></tr>
+<tr><td><code>max_tokens</code></td><td>4096</td><td>Finish reports not mid-sentence</td></tr>
+<tr><td>CM <code>safe_input</code> / ceiling</td><td>~7.7–8.2k usable</td><td>Local physics</td></tr>
+<tr><td>Completion steers</td><td>permanent in <code>loop.rs</code></td><td>Nudge → pack → text attempt</td></tr>
+</table>
+<hr/>
+<h2>9. Progressive report-completion steers — are they permanent?</h2>
+<p><strong>Yes.</strong> They are permanent product code in <code>src/agent/loop.rs</code> (not a one-off script), shipped on <code>main</code>:</p>
+<ul><li>Track discovery signal + tool count  </li><li>Every ~18 tools after “enough signal”: synthesis nudge  </li><li>Strong stage: emergency pack + “stop bulk discovery, write report”  </li><li>Up to 3 <strong>text-only</strong> finish attempts when tools≥90 or reads≥40  </li><li>Accept only if <code>looks_like_full_report</code> (multi-section, rejects PARTIAL/tool-budget stubs)  </li><li>Thin drafts fall through — <strong>full tools resume</strong>  </li><li><strong>Never</strong> offline PARTIAL quit on tool budget  </li></ul>
+<p>Commits (representative):</p>
+<ul><li><code>948836d</code> — unlimited tools, pack-and-continue, no PARTIAL tool-budget tombstones  </li><li><code>b6810d7</code> — progressive completion steers  </li><li><code>7934393</code> — orca-coder full audit doc  </li></ul>
+<hr/>
+<h2>10. Remedies that <em>failed product</em> even when they “worked”</h2>
+<table class="mdtable">
+<tr><th>Remedy</th><th>“Worked” how</th><th>Why we ripped it out</th></tr>
+<tr><td>PARTIAL finish_artifact</td><td>Always non-empty exit</td><td>Fake completion; user-hated</td></tr>
+<tr><td>Tool budget soft-finish</td><td>Forced a stop</td><td>Task ≠ tool count</td></tr>
+<tr><td>Force synthesize + strip tools</td><td>Stopped thrash</td><td>Premature; blocked needed reads</td></tr>
+<tr><td>Hard CM refuse ERROR</td><td>Saved the host</td><td>Empty-handed operator</td></tr>
+</table>
+<p>The durable pattern is: <strong>pack context, keep going, steer completion, accept only real reports.</strong></p>
+<hr/>
+<h2>11. What “done” looked like mid-day (before the thrash sprints)</h2>
+<ol><li>Local long-horizon agent on Mac Silicon with engine ON  </li><li>~5× fewer multiturn tokens vs engine OFF on matched bulk  </li><li>Discovery hygiene that does not refuse real files  </li><li>No PARTIAL / tool-budget terminal outcomes  </li><li>Full senior-dev audit of <code>orca-coder-main</code> written as a real report  </li><li>Private GitHub repo with measured docs (<code>THEORIES_AND_RESULTS.md</code>, harness reports)  </li></ol>
+<p>Companion site concept: <strong>How To Silicon</strong> — curated Mac Silicon recipes and ON vs OFF context-engine benchmarks (see Desktop <code>howtosilicon/</code>).</p>
+<p>That list was <strong>necessary but not sufficient</strong>. The afternoon runs proved a second product surface: <strong>control, task class, and stop</strong>.</p>
+<hr/>
+<h2>12. Critical analysis of recent work (same day, later commits)</h2>
+<p>This section is intentionally hard-edged. The earlier chapters celebrate survival physics. This one grades <strong>operator experience</strong> after we “solved” PARTIAL.</p>
+<h3>12.1 Timeline of the latest commits (tip → older)</h3>
+<table class="mdtable">
+<tr><th>Commit</th><th>Intent</th><th>Grade (honest)</th></tr>
+<tr><td><code>f8ec670</code></td><td>Docs-first discovery; soft-block <code>node_modules</code> / <code>.build</code> / bulk reads</td><td><strong>B+</strong> — correct product law; needs live soak</td></tr>
+<tr><td><code>897130a</code></td><td>Ceiling-aware short path; synth strips tools; stuck Rotate×3; sticky class; checkpoint de-dupe; cancel not ERROR</td><td><strong>A−</strong> — fixes root causes of 17m thrash</td></tr>
+<tr><td><code>906167c</code></td><td>Esc / Ctrl+C actually stop a running turn</td><td><strong>A</strong> — should have existed before unlimited tools</td></tr>
+<tr><td><code>d793a40</code></td><td>Short-task fast path (classify, allowlist, write-now)</td><td><strong>B</strong> — right idea; first externalize knob was wrong</td></tr>
+<tr><td><code>948836d</code> / <code>b6810d7</code></td><td>Unlimited tools + pack-continue + completion steers; no PARTIAL tool-budget</td><td><strong>B+</strong> for long audits; <strong>D</strong> for short tasks until sticky/synth fixed</td></tr>
+<tr><td><code>be29278</code></td><td>Soft pack / force synthesize / never empty ERROR</td><td><strong>C</strong> — survival yes; PARTIAL + full-tools-under-synth seeded thrash</td></tr>
+</table>
+<h3>12.2 What went well</h3>
+<p><strong>Cancel is product, not polish.</strong>  </p>
+<p>Before <code>906167c</code>, every key during a run printed <em>“Agent is still running — wait…”</em> — including Esc and Ctrl+C. After a 399-tool, 16m51s disaster, cooperative cancel returned <code>Interrupted</code> with <code>user_cancel</code>. That is the correct contract: <strong>operator sovereignty &gt; model momentum</strong>.</p>
+<p><strong>PARTIAL was the right enemy.</strong>  </p>
+<p>Ripping tool-budget / iteration soft-finish tombstones was correct. Users do not want fake completion. Measuring success by a real multi-section report (orca-coder) is the right north star for long-horizon.</p>
+<p><strong>Task class is the right abstraction.</strong>  </p>
+<p><code>ShortFile</code> vs <code>LongHorizon</code> vs <code>ScopedCode</code> is how you avoid paying audit tax on a blog critique. Sticky class across <code>1A 2B 3A</code> clarify answers was a necessary patch after classify(steer letters) → <code>scoped</code> reopened full tools.</p>
+<p><strong>CM still does its job under pressure.</strong>  </p>
+<p>Status stayed “Healthy” at ~32% prompt fill while the <strong>agent loop</strong> was unhealthy. That split is good engineering (two meters) and bad UX (operators read Healthy as “fine”). Recent work is learning to show <strong>rounds / tools / stuck</strong> as first-class, not only CM score.</p>
+<p><strong>Discovery noise policy is overdue.</strong>  </p>
+<p>Ignoring <code>node_modules</code>, <code>.build</code>, <code>target/</code>, vacuum globs, and large non-core full-reads is how you stop 339× <code>read_file</code> “research.” Docs/README/filenames first, then grep for TODO/FIXME/doc comments, then full-read only core entrypoints — that is senior-dev methodology, not a vibe.</p>
+<h3>12.3 What went badly (and what we learned)</h3>
+<p><strong>F20 — Short-path externalize set to 200k “keep blog inline.”</strong>  </p>
+<p>Predicted: one HTML stays readable.  </p>
+<p>Actual: est ≈ <strong>11–12k tokens &gt; ceiling ≈ 7.8k</strong> forever; <code>externalized=0</code>; <strong>367 checkpoints</strong> in ~22 minutes; evidence folder empty.  </p>
+<p>Lesson: <strong>never raise externalize above dispatch physics.</strong> Short path must capsule <em>earlier</em>, not later.</p>
+<p><strong>F21 — <code>force_synthesize</code> + “continuing with full tools.”</strong>  </p>
+<p>UI said <code>synth=true</code> while the model still had list/read. That is a <strong>lie to the controller</strong>. Synthesize pressure without tool stripping is an invitation to thrash. Fixed: short → text-only; long → evidence/read only under synth; stuck Rotate×3 forces text path.</p>
+<p><strong>F22 — Unlimited tools without stop.</strong>  </p>
+<p>Shipping max_tool_calls_total=0 <em>before</em> Esc cancel was a sequencing error. Long-horizon freedom without a kill switch is hostage-taking. Order should have been: <strong>cancel → then unlimited</strong>.</p>
+<p><strong>F23 — Clarify steers destroy task class.</strong>  </p>
+<p>Blog critique correctly classified <code>short</code>, then operator answered <code>1A 2B 3A</code> (or similar) and the next turn reclassified as <code>scoped</code> with full tools — 359+ tools, 343 rounds, 900s+ wall.  </p>
+<p>Lesson: <strong>MC answers are not a new task.</strong> Sticky class + re-check CM goal.</p>
+<p><strong>F24 — Checkpoint spam as false progress.</strong>  </p>
+<p>Hundreds of identical <code>(Rotate, est=11488, externalized=0)</code> events looked like work. They were not. De-dupe is mandatory for any “always pack” design.</p>
+<p><strong>F25 — Status theater.</strong>  </p>
+<p>“Healthy · Explore: OK · 0 misses” while round 343 and turn tokens 773k/500k. CM health ≠ task health. Operators need a <strong>progress</strong> meter (rounds, tools, stuck flag), not only a <strong>context</strong> meter.</p>
+<p><strong>F26 — This blog as product surface.</strong>  </p>
+<p>HowToSilicon / <code>blog.html</code> became the <em>test fixture</em> that exposed short-path failure. Meta lesson: dogfood your docs as short tasks continuously, not only long audits.</p>
+<h3>12.4 Critical product judgment</h3>
+<table class="mdtable">
+<tr><th>Surface</th><th>Mid-day claim</th><th>Later reality</th><th>Now (after repairs)</th></tr>
+<tr><td>Long audit</td><td>No PARTIAL; pack+continue</td><td>Orca report real</td><td>Still the win case</td></tr>
+<tr><td>Short critique</td><td>“Unlimited tools is fine”</td><td>17m thrash, 399 tools</td><td>Sticky short + ceiling externalize + text under synth</td></tr>
+<tr><td>Stop</td><td>—</td><td>Impossible (key swallow)</td><td>Esc / Ctrl+C cancel; Interrupted not ERROR</td></tr>
+<tr><td>Discovery</td><td>List/glob/read hygiene</td><td>Vacuum + full-file dumps</td><td>Noise soft-block + docs-first policy</td></tr>
+<tr><td>Observability</td><td>CM score</td><td>Events almost only checkpoints</td><td>Still weak on tool histograms — backlog</td></tr>
+</table>
+<p><strong>Overall grade for the afternoon arc: B.</strong>  </p>
+<p>We fixed the right things under pressure, in the right order <em>once thrash was undeniable</em>, but we shipped <strong>long-horizon freedom without short-horizon discipline and without stop</strong>, which is how you burn a 35B session and an operator’s patience.</p>
+<h3>12.5 What “done” means <em>now</em> (revised)</h3>
+<ol><li>Long-horizon: unlimited tools, pack+continue, completion steers, <strong>no PARTIAL tool-budget</strong>  </li><li>Short-horizon: sticky ShortFile, ceiling-aware externalize, few tools, write-now  </li><li>Under pressure: <strong>synthesize means fewer tools</strong>, not full tools  </li><li>Operator: Esc stops; second Esc force-aborts; cancel is not painted as ERROR  </li><li>Discovery: skip build/vendor noise; README/docs/filenames first; grep dev comments; full-read only core  </li><li>Still open: tool-level event telemetry, MLX quarantine UX, stuck auto-cancel after N minutes  </li></ol>
+<h3>12.6 Recommendations (next engineering, prioritized)</h3>
+<ol><li>~~<strong>Live soak</strong> short blog critique + orca-style audit~~ → <strong>done</strong> for orca: ~<strong>82s</strong> full report (see §15).  </li><li>Log <code>tool_batch</code> / <code>llm_round</code> into <code>events.jsonl</code> — <strong>done</strong> in 0.3.0.  </li><li>Status bar: <code>rounds · tools · stuck?</code> — <strong>done</strong> in 0.3.0.  </li><li>Align MLX server <code>--max-tokens</code> with Ferroclaw <code>max_tokens</code> (still worth watching).  </li><li>Auto-cancel after N identical Rotate signatures or wall &gt; T for ShortFile — <strong>done</strong> for short path.  </li><li>Keep HowToSilicon / this blog as a <strong>CI short-task fixture</strong>, not only narrative.</li></ol>
+<hr/>
+<h2>13. Open questions (honest backlog)</h2>
+<ul><li>Multi-hour idle soak under MLX quarantine still optional measurement  </li><li>Evidence-first scoring for findings that over-infer from path names  </li><li>Public HowToSilicon with multi-Mac profiles (M1–M4 · 16/32/64/128 GB)  </li><li>Whether “dev comments only” should become a <strong>grep-first hard phase</strong> before any full read (policy yes; hard gate optional)  </li><li>Message-only context budget accounting (tool schema weight) — residual from Grok-local research  </li></ul>
+<hr/>
+<h2>14. One-paragraph thesis (updated)</h2>
+<p>Long-horizon local agents do not fail because 35B models are “dumb.” They fail because the <strong>live prompt is treated as durable memory</strong> on hardware that cannot host cloud-sized KV — and because <strong>task class and operator control</strong> were treated as afterthoughts to survival. Ferroclaw’s context memory engine makes <strong>disk the system of record</strong> and <strong>context a cache</strong>. After rejecting PARTIAL tool-budget tombstones, the durable runtime is <strong>unlimited tools + pack-and-continue + completion steers for long work</strong>, <strong>sticky short-path + ceiling-aware externalize + text-under-pressure for small work</strong>, <strong>docs-first discovery that refuses build noise</strong>, <strong>Esc that actually stops</strong>, and a <strong>Hermes2-style iteration finalizer</strong> that forces a real multi-section deliverable once exploration has paid for itself. Measure success by <strong>real reports in minutes, not thrash forever</strong> — and we now have the proof: <strong>orca-coder full senior-dev audit completed in about one minute</strong>.</p>
+<hr/>
+<h2>15. IT WORKS — Orca audit completed in ~1 minute (finalizer upgrade)</h2>
+<h3>15.1 The product win (plain language)</h3>
+<p><strong>Ferroclaw is working.</strong> Not “survival theater,” not a PARTIAL tombstone, not a 17-minute thrash that never ships a report.</p>
+<p>On <strong>2026-07-20</strong>, headless run against <code>/Users/ghost64/Desktop/orca-coder-main</code> with local <strong>Qwen3.6-35B-A3B-4bit (MLX)</strong> on <strong>Mac 32 GB</strong>:</p>
+<table class="mdtable">
+<tr><th>Metric</th><th>Result</th></tr>
+<tr><td><strong>Wall clock</strong></td><td><strong>~82 seconds (~1.4 min)</strong> — under the 5-minute bar; effectively a <strong>~1-minute-class</strong> full audit</td></tr>
+<tr><td><strong>Exit</strong></td><td><code>0</code> (success)</td></tr>
+<tr><td><strong>Deliverable</strong></td><td>Real multi-section senior-dev report: overview, architecture, risks, ≥5 findings with paths, recommendations</td></tr>
+<tr><td><strong>PARTIAL / tool-budget stop</strong></td><td><strong>None</strong></td></tr>
+<tr><td><strong>Exploration footprint</strong></td><td>Listed ≤7 · opened ≤5 (docs-first, noise-skipped) — not 300+ directory walks</td></tr>
+<tr><td><strong>Binary</strong></td><td><code>ferroclaw 0.3.0</code> · commit <strong><code>54bbaec</code></strong></td></tr>
+<tr><td><strong>Log</strong></td><td><code>docs/reports/orca-finalizer-run.log</code></td></tr>
+</table>
+<p>That is the north star we set after ripping PARTIAL: <strong>a real audit report, fast enough to dogfood, without operator-prompt gymnastics.</strong></p>
+<h3>15.2 What we upgraded (Hermes2-style finalizer)</h3>
+<p>Research across hermes2 / grok-local / context-engine forks agreed on one pattern we were under-enforcing:</p>
+<blockquote><p><strong>Bound exploration → externalize bulk → tools off → force a real answer. Never offline PARTIAL as “success.”</strong></p></blockquote>
+<p>Ferroclaw 0.3 finalizer (<code>src/agent/finalizer.rs</code> + loop wiring):</p>
+<ol><li><strong>Task class</strong> detects codebase / critically-analyze work → scoped path with soft budgets (tools / rounds / wall).  </li><li><strong>Discovery hygiene</strong> skips <code>node_modules</code> / <code>.build</code> / <code>target</code>; prefers README/docs before full-file thrash.  </li><li>When soft budget, wall, steer thrash, or stuck Rotate hits → <strong>iteration finalizer arms</strong>:  </li></ol>
+<p>   - tools <strong>stripped</strong> (<code>tools=[]</code>)  </p>
+<p>   - last-response prompt demands multi-section Markdown  </p>
+<p>   - rejects “let me inspect more” / PARTIAL titles / pure continuation prose  </p>
+<p>   - <strong>one retry</strong>, then best-effort if still a long non-stall draft  </p>
+<ol><li>Operator still owns the process: <strong>Esc / Ctrl+C</strong> cancel works (<code>Interrupted</code>, not red ERROR theater).</li></ol>
+<h3>15.3 Why this is “intuitive by default”</h3>
+<p>The goal is not a faster stopwatch on a hand-tuned script. The goal is:</p>
+<ul><li><strong>Natural prompts work</strong> — “critically analyze this codebase” should not require a 20-line discovery manifesto.  </li><li><strong>Task decomposition is automatic</strong> — classify short vs scoped vs long; sticky class; soft ceilings.  </li><li><strong>Useful work first</strong> — list structure, read docs/entrypoints, skip noise, externalize bulk under Mac32 ceiling.  </li><li><strong>Finish by default</strong> — when enough evidence is in context (or soft budget hits), <strong>write the report</strong> instead of rotating forever.</li></ul>
+<p>If the operator has to “mess with parameters” or paste verbose steers for every audit, we failed the product. The finalizer + task class + discovery policy are how we make <strong>default behavior</strong> the fast path.</p>
+<h3>15.4 Timeline honesty (same day)</h3>
+<table class="mdtable">
+<tr><th>Stage</th><th>Outcome</th></tr>
+<tr><td>Mid-day orca (completion steers, no finalizer)</td><td>Full report, ~<strong>5 min</strong> — good, not snappy</td></tr>
+<tr><td>Short-task thrash era</td><td>Blog critique → <strong>17m / 399 tools</strong> — product failure</td></tr>
+<tr><td>Cancel + sticky short + synth honesty</td><td>Operator control restored</td></tr>
+<tr><td><strong>Finalizer upgrade (<code>54bbaec</code>)</strong></td><td>Orca <strong>~82s</strong>, EXIT 0, real report — <strong>working</strong></td></tr>
+</table>
+<h3>15.5 What “completed” means</h3>
+<ul><li>Multi-section structure present (overview / architecture / risks / findings / recommendations)  </li><li>Real paths from the tree (not invented <code>scripts/</code> confs)  </li><li>No <code># PARTIAL report</code> / “tool budget reached” terminal  </li><li>Wall under a few minutes on local 35B without cloud context  </li><li>Reproducible binary: <code>ferroclaw 0.3.0</code> on <code>main</code></li></ul>
+<p><strong>Bottom line:</strong> the context/memory engine + production harness is <strong>not a science project anymore for the orca-class job.</strong> It runs, it finishes, and it finishes in about a minute.</p>
+<hr/>
+<p><em>Written 2026-07-20; §12–14 after cancel/thrash/discovery (<code>906167c</code>…<code>f8ec670</code>); <strong>§15 after finalizer upgrade + live orca SUCCESS ~82s (<code>54bbaec</code>)</strong>. Sources: <code>docs/FORK_RESEARCH_HERMES2_GROK_LOCAL.md</code>, <code>docs/PRODUCTION_READY_SPRINT.md</code>, <code>docs/reports/orca-finalizer-run.log</code>, live MLX Qwen35B Mac32.</em></p>
+</article>
+</body>
+</html>

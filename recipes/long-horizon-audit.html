@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Recipe · Long-horizon repo audit — How To Silicon</title>
+  <link rel="stylesheet" href="../styles.css" />
+</head>
+<body>
+  <main class="prose">
+    <a class="back" href="../index.html">← How To Silicon</a>
+    <p class="eyebrow">Product path · full reports only</p>
+    <h1>Long-horizon repo audit (orca-class)</h1>
+    <p>
+      Open-ended senior-dev audit of a large tree without PARTIAL tombstones and
+      without tool-count circuit breakers.
+    </p>
+
+    <h2>Runtime laws</h2>
+    <ul>
+      <li><code>max_tool_calls_total = 0</code> — unlimited lifetime tools</li>
+      <li>Emergency pack + <strong>continue</strong> (never pack + quit)</li>
+      <li>Progressive completion steers: nudge → pack → optional text-only finish</li>
+      <li>Accept only multi-section reports (reject PARTIAL / tool-budget stubs)</li>
+      <li>Discovery-first: list / glob before inventing paths</li>
+    </ul>
+
+    <h2>Command</h2>
+    <pre>export OPENAI_API_KEY=local
+export FERROCLAW_HEADLESS=1
+
+ferroclaw exec "Senior-dev audit of /path/to/repo.
+
+Discovery: list_dir/glob first; only read listed paths.
+Deliver COMPLETE report (not PARTIAL): overview, architecture,
+risks, ≥5 findings with real paths, recommendations."</pre>
+
+    <h2>Proven outcome</h2>
+    <p>
+      Headless audit of <code>orca-coder-main</code> produced a full senior-dev
+      report (~12k chars): architecture, risks, five findings, recommendations —
+      with <strong>no</strong> <code>tool budget reached</code> and
+      <strong>no</strong> PARTIAL title. See ferroclaw
+      <code>docs/reports/orca-coder-audit.md</code>.
+    </p>
+
+    <h2>What we rejected</h2>
+    <ul>
+      <li>Soft-finish PARTIAL artifacts when tools or iterations hit a counter</li>
+      <li>Stripping tools to force synthesize early</li>
+      <li>Empty ERROR on CM over-budget</li>
+    </ul>
+  </main>
+</body>
+</html>

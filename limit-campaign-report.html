@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Limit Campaign — Long-Horizon × Large-Repo</title>
+<style>
+:root{--bg:#0b0d0e;--panel:#111416;--panel2:#161a1d;--line:#293036;--ink:#f1f2ec;--muted:#9aa4a8;--dim:#69747a;--lime:#b7f36b;--amber:#ffc15a;--red:#ff766e;--blue:#71b7ff;--purple:#c4a1ff;--radius:12px;--mono:"SFMono-Regular",Menlo,Consolas,monospace;--sans:"Avenir Next","Helvetica Neue",Arial,sans-serif}
+*{box-sizing:border-box}html{background:var(--bg);color:var(--ink);font-family:var(--sans);scroll-behavior:smooth}body{margin:0;min-height:100vh;background:linear-gradient(180deg,#0d1011 0,#090b0c 60%)}button,select{font:inherit}button{color:inherit}
+.shell{max-width:1440px;margin:auto;padding:24px clamp(16px,3vw,48px) 64px}
+.topbar{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:8px 0 24px;border-bottom:1px solid var(--line)}
+.eyebrow,.mono{font-family:var(--mono)}.eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--lime)}.stamp{font:11px var(--mono);color:var(--dim)}
+.hero{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(280px,.65fr);gap:clamp(28px,5vw,72px);padding:30px 0 28px}
+.hero h1{font-size:clamp(34px,4.2vw,58px);line-height:1;letter-spacing:-.045em;margin:8px 0 16px;font-weight:650;max-width:1020px}
+.hero p{font-size:clamp(15px,1.25vw,18px);line-height:1.5;color:var(--muted);max-width:820px;margin:0}
+.verdict{align-self:end;border-top:2px solid var(--lime);padding-top:14px}.verdict strong{display:block;font-size:19px;margin-bottom:8px}.verdict p{font-size:14px;line-height:1.5}
+.gates{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;margin:0 0 28px}
+.gate{padding:18px;background:var(--panel);border-right:1px solid var(--line);min-height:118px}.gate:last-child{border:0}
+.gate .id{font:11px var(--mono);color:var(--dim)}.gate strong{display:block;margin:18px 0 5px;font-size:15px}.gate small{display:block;color:var(--muted);line-height:1.35}
+.status{display:inline-flex;align-items:center;gap:7px;font:10px var(--mono);text-transform:uppercase;letter-spacing:.08em}
+.status:before{content:"";width:7px;height:7px;border-radius:50%;background:var(--dim)}
+.pass{color:var(--lime)}.pass:before{background:var(--lime);box-shadow:0 0 12px #b7f36b66}
+.progress{color:var(--amber)}.progress:before{background:var(--amber)}
+.fail{color:var(--red)}.fail:before{background:var(--red)}
+.pending{color:var(--muted)}
+.tabs{position:sticky;top:0;z-index:5;display:flex;gap:4px;padding:10px 0;background:#0b0d0ef0;backdrop-filter:blur(8px);border-bottom:1px solid var(--line);margin-bottom:28px}
+.tab{border:0;background:transparent;color:var(--muted);padding:10px 14px;border-radius:8px;cursor:pointer}
+.tab:hover,.tab:focus-visible{background:var(--panel2);color:var(--ink)}
+.tab.active{background:var(--ink);color:var(--bg)}
+.tab:focus-visible,.filter:focus-visible,.row-action:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.view{display:none}.view.active{display:block}
+.section-head{display:flex;justify-content:space-between;align-items:end;gap:20px;margin:42px 0 16px}
+.section-head h2{font-size:clamp(25px,3vw,38px);letter-spacing:-.035em;margin:0}
+.section-head p{color:var(--muted);max-width:640px;margin:0;line-height:1.45;font-size:14px}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.metric{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px;min-height:142px}
+.metric-label{display:block;font:11px var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.metric .value{font:clamp(30px,4vw,50px)/1 var(--mono);letter-spacing:-.06em;margin:25px 0 9px}
+.metric small{color:var(--dim);line-height:1.35}.good{color:var(--lime)}.warn{color:var(--amber)}.bad{color:var(--red)}
+.grid2{display:grid;grid-template-columns:1.5fr .8fr;gap:12px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px;min-width:0}
+.panel-title{display:flex;justify-content:space-between;gap:15px;align-items:center;margin-bottom:18px}
+.panel-title h3{margin:0;font-size:16px}
+.panel-title select{background:var(--panel2);color:var(--ink);border:1px solid var(--line);padding:8px 28px 8px 10px;border-radius:7px}
+.chart{height:320px;width:100%;position:relative}.chart.tall{height:360px}
+.chart svg{width:100%;height:100%;overflow:visible}
+.axis{stroke:#333a3f;stroke-width:1}.gridline{stroke:#262c30;stroke-width:1}
+.line-input{fill:none;stroke:var(--lime);stroke-width:3}
+.line-cache{fill:none;stroke:var(--blue);stroke-width:2;stroke-dasharray:5 5}
+.line-req{fill:none;stroke:var(--purple);stroke-width:2}
+.line-quality{fill:none;stroke:var(--lime);stroke-width:3}
+.line-peak{fill:none;stroke:var(--amber);stroke-width:2.5}
+.line-dur{fill:none;stroke:var(--blue);stroke-width:2;stroke-dasharray:4 4}
+.dot{cursor:pointer;stroke:var(--panel);stroke-width:3}
+.chart-label{fill:var(--dim);font:10px var(--mono)}
+.legend{display:flex;flex-wrap:wrap;gap:16px;font:11px var(--mono);color:var(--muted)}
+.legend i{width:18px;height:2px;display:inline-block;vertical-align:middle;margin-right:6px;background:var(--lime)}
+.legend i.cache{background:var(--blue)}.legend i.req{background:var(--purple)}.legend i.peak{background:var(--amber)}.legend i.dur{background:var(--blue)}
+.tooltip{position:absolute;display:none;pointer-events:none;background:#050607;border:1px solid var(--line);border-radius:8px;padding:9px 11px;font:11px/1.5 var(--mono);box-shadow:0 12px 40px #0009;z-index:4}
+.findings{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.finding{background:var(--panel);padding:17px 18px;display:grid;grid-template-columns:110px 1fr;gap:14px}
+.finding b{font:11px var(--mono);text-transform:uppercase;letter-spacing:.08em}
+.finding p{margin:0;color:var(--muted);font-size:14px;line-height:1.45}
+.controls{display:flex;flex-wrap:wrap;gap:8px}
+.filter{border:1px solid var(--line);background:var(--panel);padding:8px 12px;border-radius:999px;cursor:pointer;color:var(--muted);font-size:12px}
+.filter.active{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:var(--radius)}
+table{border-collapse:collapse;width:100%;min-width:900px;background:var(--panel)}
+th,td{text-align:left;padding:13px 14px;border-bottom:1px solid var(--line);font-size:13px}
+th{font:10px var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.08em;position:sticky;top:0;background:var(--panel2)}
+tr:last-child td{border-bottom:0}tbody tr:hover{background:#181d20}
+.row-action{display:block;width:100%;border:0;padding:0;background:transparent;color:inherit;text-align:left;cursor:pointer;font:inherit}
+.tag{font:10px var(--mono);padding:4px 7px;border:1px solid var(--line);border-radius:999px;color:var(--muted)}
+.tag.ok{color:var(--lime);border-color:#4b6631}.tag.fail{color:var(--amber);border-color:#71572b}.tag.bad{color:var(--red);border-color:#6a3532}
+.bar{height:7px;background:#262c30;border-radius:99px;overflow:hidden;min-width:90px}
+.bar span{display:block;height:100%;background:var(--lime)}.bar.amber span{background:var(--amber)}.bar.red span{background:var(--red)}
+.detail{margin-top:12px;display:none}.detail.open{display:block}
+.detail-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.detail-grid div{background:var(--panel);padding:14px}
+.detail-grid span{display:block;color:var(--dim);font:10px var(--mono);text-transform:uppercase;margin-bottom:7px}
+.detail-grid strong{font:14px var(--mono)}
+.method{display:grid;grid-template-columns:220px 1fr;gap:30px;padding:22px 0;border-top:1px solid var(--line)}
+.method h3{margin:0;font:13px var(--mono);color:var(--lime)}
+.method p,.method li{color:var(--muted);font-size:14px;line-height:1.55}.method p{margin:0}.method ul{margin:0;padding-left:18px}
+.callout{border:1px solid #4b6631;background:#11170e;border-radius:var(--radius);padding:22px;margin:20px 0}
+.callout.warn{border-color:#71572b;background:#1a140c}
+.callout strong{display:block;margin-bottom:8px}
+.callout p{margin:0;color:#bdc9b1;line-height:1.5;font-size:14px}.callout.warn p{color:#d9c4a0}
+.rec-list{display:grid;gap:10px}.rec{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:grid;grid-template-columns:40px 1fr;gap:12px;align-items:start}
+.rec .n{font:12px var(--mono);color:var(--lime)}.rec p{margin:0;color:var(--muted);font-size:14px;line-height:1.45}
+.radar-wrap{display:flex;justify-content:center}
+footer{border-top:1px solid var(--line);margin-top:56px;padding-top:18px;display:flex;justify-content:space-between;gap:20px;color:var(--dim);font:11px/1.5 var(--mono)}
+@media(max-width:900px){.hero{grid-template-columns:1fr}.gates{grid-template-columns:1fr 1fr}.gate{border-bottom:1px solid var(--line)}.metrics,.grid3{grid-template-columns:1fr 1fr}.grid2{grid-template-columns:1fr}.method{grid-template-columns:1fr;gap:8px}}
+@media(max-width:560px){.shell{padding-inline:14px}.topbar{align-items:flex-start;flex-direction:column}.gates,.metrics,.grid3{grid-template-columns:1fr}.tabs{overflow:auto}.hero h1{font-size:42px}.finding{grid-template-columns:1fr}.detail-grid{grid-template-columns:1fr}footer{flex-direction:column}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="shell">
+<header class="topbar">
+  <div><div class="eyebrow">Progressive limit campaign</div><strong>Grok Build × Qwen 3.6 35B A3B · Apple Silicon · local MLX</strong></div>
+  <div class="stamp">REPORT / 2026-07-21 / limit-campaign-20260721T113912</div>
+</header>
+
+<section class="hero">
+  <div>
+    <div class="eyebrow">Context · smoothness · quality · speed</div>
+    <h1>The ceiling is recovery, not window size.</h1>
+    <p>Gate&nbsp;0 pad ladder (16k→20k→24k), dogfood monorepo audit, and dual-repo architecture comparison. Measured on isolated <span class="mono">local-qwen</span> / <span class="mono">local-qwen-audit</span> against MLX. Raw window is not the primary limiter—first-try hygiene, post-compaction recovery, and tool-loop bloat are.</p>
+  </div>
+  <aside class="verdict">
+    <strong>Bounded, actionable result</strong>
+    <p>Pad 24k hit 28/28 recall with peak ~26k tokens and was the <em>fastest</em> high-pressure run. Dual-repo failed open, then passed under a hard tool cap. Raising <span class="mono">safe_context</span> is not the first move.</p>
+  </aside>
+</section>
+
+<section class="gates" aria-label="Campaign rungs">
+  <div class="gate"><span class="id">RUNG 1</span><strong>Gate0 pad 16k</strong><span class="status progress">Partial</span><small>24/28 · peak 22.4k · 17.5m</small></div>
+  <div class="gate"><span class="id">RUNG 2</span><strong>Gate0 pad 20k</strong><span class="status fail">Weakest</span><small>20/28 · peak 21.8k · 32m</small></div>
+  <div class="gate"><span class="id">RUNG 3</span><strong>Gate0 pad 24k</strong><span class="status pass">Recall</span><small>28/28 · peak 26.3k · 12.3m</small></div>
+  <div class="gate"><span class="id">RUNG 4</span><strong>Dogfood audit</strong><span class="status pass">Pass</span><small>P0–P2 · 8 turns · 5.4m</small></div>
+  <div class="gate"><span class="id">RUNG 5</span><strong>Dual-repo</strong><span class="status pass">v2 pass</span><small>v1 empty · v2 tool-cap 4m</small></div>
+</section>
+
+<nav class="tabs" role="tablist" aria-label="Report sections">
+  <button id="tab-overview" class="tab active" role="tab" aria-selected="true" aria-controls="overview" data-view="overview">Overview</button>
+  <button id="tab-ladder" class="tab" role="tab" aria-selected="false" aria-controls="ladder" data-view="ladder" tabindex="-1">Pad ladder</button>
+  <button id="tab-largerepo" class="tab" role="tab" aria-selected="false" aria-controls="largerepo" data-view="largerepo" tabindex="-1">Large-repo</button>
+  <button id="tab-knobs" class="tab" role="tab" aria-selected="false" aria-controls="knobs" data-view="knobs" tabindex="-1">Knobs &amp; recs</button>
+</nav>
+
+<main>
+<section id="overview" class="view active" role="tabpanel" aria-labelledby="tab-overview">
+  <div class="metrics">
+    <article class="metric"><span class="metric-label">Best pad recall</span><div class="value good">28/28</div><small>Pad 24k — strict recall under rotation pressure.</small></article>
+    <article class="metric"><span class="metric-label">Peak request</span><div class="value">26.3k</div><small>Pad 24k request input; budget pressure ~24.6k.</small></article>
+    <article class="metric"><span class="metric-label">Dogfood plan</span><div class="value good">PASS</div><small>Monorepo audit · P0/P1/P2 · no refusal.</small></article>
+    <article class="metric"><span class="metric-label">Dual-repo fix</span><div class="value good">4.0m</div><small>v1 empty at 101k tokens; v2 tool-capped pass.</small></article>
+  </div>
+
+  <div class="section-head">
+    <h2>Pad ladder: quality · peak · duration</h2>
+    <p>Click points for values. Quality recovered at 24k while wall time fell—speed and quality co-moved against the 20k stall.</p>
+  </div>
+  <div class="grid2">
+    <article class="panel">
+      <div class="panel-title"><h3>Interactive ladder radar + series</h3>
+        <select id="ladderMode" aria-label="Chart mode">
+          <option value="combo">Quality + peak + duration</option>
+          <option value="quality">Quality only</option>
+          <option value="peak">Peak tokens only</option>
+        </select>
+      </div>
+      <div class="legend">
+        <span><i></i>quality (0–1)</span>
+        <span><i class="peak"></i>peak prompt</span>
+        <span><i class="dur"></i>duration (scaled)</span>
+      </div>
+      <div id="ladderChart" class="chart tall"><div class="tooltip"></div></div>
+    </article>
+    <aside class="findings">
+      <div class="finding"><b class="good">24k wins</b><p>Full 28/28 records, 7/7 phases, rotation durable, wall time 740s—best quality <em>and</em> best speed in the ladder.</p></div>
+      <div class="finding"><b class="warn">20k valley</b><p>Quality 0.71, two null-token compaction stalls (~5m each). More pad without recovery made things worse.</p></div>
+      <div class="finding"><b class="good">Rotation works</b><p>When required, durable compaction + request drop passed. Peak under budget correctly waived rotation at 20k.</p></div>
+      <div class="finding"><b>E2E still open</b><p>All three e2e=false: first-try phase hygiene fails under pressure even when final recall is perfect.</p></div>
+      <div class="finding"><b>Config context</b><p>safe_context 45 056 · safe_input 32 768 · target 28 672 · hard_refuse true · pressure base ~24 576.</p></div>
+    </aside>
+  </div>
+
+  <div class="section-head">
+    <h2>Capability map</h2>
+    <p>Four axes scored 0–1 from campaign outcomes (interactive hover).</p>
+  </div>
+  <div class="grid2">
+    <article class="panel"><div class="panel-title"><h3>Radar — where the stack stands</h3></div>
+      <div id="radarChart" class="chart radar-wrap"></div>
+    </article>
+    <article class="panel"><div class="panel-title"><h3>Rung wall-time bars</h3></div>
+      <div id="durationBars" class="chart"></div>
+    </article>
+  </div>
+</section>
+
+<section id="ladder" class="view" role="tabpanel" aria-labelledby="tab-ladder">
+  <div class="section-head">
+    <h2>Gate 0 trajectories</h2>
+    <p>Per-phase backend request tokens and cache prefix. Null-input phases after compaction show as gaps.</p>
+  </div>
+  <div class="panel">
+    <div class="panel-title">
+      <h3>Token trajectory by pad</h3>
+      <select id="trajSelect" aria-label="Select pad trajectory">
+        <option value="pad16000">Pad 16 000</option>
+        <option value="pad20000">Pad 20 000</option>
+        <option value="pad24000" selected>Pad 24 000</option>
+      </select>
+    </div>
+    <div class="legend">
+      <span><i></i>prompt input</span>
+      <span><i class="req"></i>request input</span>
+      <span><i class="cache"></i>cache read</span>
+    </div>
+    <div id="trajectory" class="chart tall"><div class="tooltip"></div></div>
+  </div>
+
+  <div class="section-head"><h2>Ladder table</h2><p>Select a row for detail. Strict recall ≠ end-to-end.</p></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Pad</th><th>Quality</th><th>Records</th><th>Phases</th><th>Strict</th><th>E2E</th><th>Peak</th><th>Rotation</th><th>Duration</th></tr></thead>
+    <tbody id="ladderRows"></tbody>
+  </table></div>
+  <div id="ladderDetail" class="detail panel" aria-live="polite"></div>
+
+  <div class="callout warn">
+    <strong>Why e2e fails when quality is 1.0</strong>
+    <p>End-to-end requires first-try phase success and exact tool identity. Pad 24k phase 6 needed attempt 2 (tool_strict false on that phase only). Recall and rotation can both be true while e2e stays false—use <span class="mono">recall_success</span> / quality for capability, e2e for promotion hygiene.</p>
+  </div>
+</section>
+
+<section id="largerepo" class="view" role="tabpanel" aria-labelledby="tab-largerepo">
+  <div class="section-head">
+    <h2>Large-repo single-shot</h2>
+    <p>Dogfood monorepo + dual-tree architecture plan. Tool budget dominates multi-root success.</p>
+  </div>
+  <div class="grid3" id="repoCards"></div>
+
+  <div class="section-head"><h2>Compare outcomes</h2></div>
+  <div class="panel"><div id="repoCompare" class="chart"></div></div>
+
+  <div class="table-wrap" style="margin-top:16px"><table>
+    <thead><tr><th>Run</th><th>Result</th><th>Turns</th><th>Plan</th><th>Input toks</th><th>Output</th><th>Duration</th></tr></thead>
+    <tbody id="repoRows"></tbody>
+  </table></div>
+  <div id="repoDetail" class="detail panel" aria-live="polite"></div>
+
+  <div class="callout">
+    <strong>Dual-repo recipe that worked</strong>
+    <p>v2: <span class="mono">cwd=orca</span>, max 14 turns, prompt hard-limit ≤6 tools, ≤3 deep-reads/repo, force sections P0–P2 + Risks + first PR. Wall time 4 min vs 15.5 min empty fail.</p>
+  </div>
+</section>
+
+<section id="knobs" class="view" role="tabpanel" aria-labelledby="tab-knobs">
+  <div class="section-head">
+    <h2>Config snapshot &amp; recommendations</h2>
+    <p>What to turn next—and what not to.</p>
+  </div>
+  <div class="detail-grid" id="configGrid"></div>
+
+  <div class="section-head"><h2>Priority actions</h2></div>
+  <div class="rec-list" id="recList"></div>
+
+  <div class="section-head"><h2>Method</h2></div>
+  <div class="method"><h3>Isolation</h3><p>Bench GROK_HOME, release binary from <span class="mono">xai-grok-pager-bin</span>, shared MLX :8080, no web search, no subagents for audit/dual rungs.</p></div>
+  <div class="method"><h3>Gate 0 ladder</h3><p>Seven phases + final raw JSON recall. Pad chars in user messages only. Rotation required when pad high and peak ≥ ~90% budget pressure (observed base 24 576).</p></div>
+  <div class="method"><h3>Large-repo</h3><p>Single user prompt. Host audit orchestrator injects map/evidence/seed; tool budget + synthesis gates. Dogfood targeted turn/compaction/tool safety. Dual-repo compared Orca vs Hermes2.</p></div>
+  <div class="method"><h3>Claims hygiene</h3><p>Single-run rates provisional. Pad 24k recall is a capability proof under rotation, not an SLA. Dual v1 is a product failure mode (empty response after Externalize), not model refusal.</p></div>
+  <div class="method"><h3>Open work</h3><ul>
+    <li>Empty-response recovery → force synthesis after Persist/Externalize.</li>
+    <li>Post-compaction phase resume when tool/phase fails with null input.</li>
+    <li>Optional <span class="mono">target_input</span> 28 672→30 720 only if peaks need &gt;26k without early Externalize.</li>
+    <li>N≥3 for claimed pad rates; first-try-clean e2e at 16k+.</li>
+  </ul></div>
+</section>
+</main>
+
+<footer>
+  <span>Source: /tmp/limit-campaign-20260721T113912 · self-contained offline report</span>
+  <span>Hosted web search disabled · local MLX only · generated 2026-07-21</span>
+</footer>
+</div>
+<script>
+// REPORT_DATA_BEGIN
+const DATA = {"schemaVersion":1,"generatedAt":"2026-07-21","campaignId":"limit-campaign-20260721T113912","title":"Progressive long-horizon / large-context limit campaign","model":"Qwen3.6-35B-A3B-4bit (MLX)","config":{"safe_context_tokens":45056,"safe_input_tokens":32768,"target_input_tokens":28672,"hard_refuse":true,"local_qwen_completion":4096,"local_qwen_audit_completion":8192,"budget_pressure_tokens_observed":24576},"gate0":[{"rung":"gate0_pad16000","pad":16000,"verdict":"fail","failed":true,"quality":0.8571428571428572,"exact_records":24,"checksum_recall":0.8571428571428571,"strict_success":false,"end_to_end_success":false,"phases_matched":6,"tool_strict":false,"per_phase_first_try":false,"rotation_required":true,"rotation_strict":true,"rotation_reason":null,"peak_prompt":22440,"peak_request":23477,"duration_s":1047.2521271705627,"compactions":2,"api_calls":9},{"rung":"gate0_pad20000","pad":20000,"verdict":"fail","failed":true,"quality":0.7142857142857144,"exact_records":20,"checksum_recall":0.7142857142857143,"strict_success":false,"end_to_end_success":false,"phases_matched":5,"tool_strict":false,"per_phase_first_try":false,"rotation_required":false,"rotation_strict":true,"rotation_reason":"padding_present_but_peak_under_budget","peak_prompt":21778,"peak_request":22735,"duration_s":1919.9747500419617,"compactions":2,"api_calls":11},{"rung":"gate0_pad24000","pad":24000,"verdict":"fail","failed":true,"quality":1.0,"exact_records":28,"checksum_recall":1.0,"strict_success":true,"end_to_end_success":false,"phases_matched":7,"tool_strict":true,"per_phase_first_try":false,"rotation_required":true,"rotation_strict":true,"rotation_reason":null,"peak_prompt":26294,"peak_request":26357,"duration_s":739.8416159152985,"compactions":2,"api_calls":9}],"trajectories":{"pad16000":[{"i":1,"kind":"phase","input":5415,"request":5491,"cache":5289},{"i":2,"kind":"phase","input":5207,"request":10492,"cache":10293},{"i":3,"kind":"phase","input":13770,"request":14807,"cache":14604},{"i":4,"kind":"phase","input":18109,"request":19146,"cache":18941},{"i":5,"kind":"phase","input":22440,"request":23477,"cache":23270},{"i":6,"kind":"phase","input":null,"request":0,"cache":0},{"i":7,"kind":"phase","input":6586,"request":7629,"cache":7420},{"i":8,"kind":"final","input":8191,"request":9152,"cache":961}],"pad20000":[{"i":1,"kind":"phase","input":5362,"request":6403,"cache":6200},{"i":2,"kind":"phase","input":6110,"request":12306,"cache":12106},{"i":3,"kind":"phase","input":16847,"request":17888,"cache":17684},{"i":4,"kind":"phase","input":21778,"request":22735,"cache":22445},{"i":5,"kind":"phase","input":null,"request":0,"cache":0},{"i":6,"kind":"phase","input":null,"request":0,"cache":0},{"i":7,"kind":"phase","input":7299,"request":8321,"cache":8111},{"i":8,"kind":"final","input":8925,"request":9886,"cache":961}],"pad24000":[{"i":1,"kind":"phase","input":6274,"request":7298,"cache":7092},{"i":2,"kind":"phase","input":7017,"request":14105,"cache":13902},{"i":3,"kind":"phase","input":19195,"request":20219,"cache":20012},{"i":4,"kind":"phase","input":26294,"request":26357,"cache":26148},{"i":5,"kind":"phase","input":16936,"request":9083,"cache":0},{"i":6,"kind":"phase","input":15353,"request":16372,"cache":16165},{"i":7,"kind":"phase","input":21035,"request":22054,"cache":21841},{"i":8,"kind":"final","input":22720,"request":22720,"cache":0}]},"largeRepo":[{"id":"dogfood","name":"Dogfood monorepo audit","kind":"pass","duration":326,"turns":8,"planLen":10962,"p0":true,"p1":true,"p2":true,"refusal":false,"hostEmitted":false,"cites":"shell + crates","peakLike":155469,"inputTokens":59296,"outputTokens":3916,"note":"Single-shot audit of grok-build-local-isolated focusing on turn loop, compaction, tool safety. Full ranked plan; model-authored (no host seed emit).","snippet":"I'll conduct a deep audit focusing on **session turn loop**, **compaction**, and **tool safety**. Let me start by reading the highest-risk files relevant to these three areas.       Good. Now let me read the compaction crate's core logic and the tool runtime's safety mechanisms more deeply.      Budget warning received. Let me do 2 final targeted reads, then synthesize the plan.   Now let me do a"},{"id":"dual_v1","name":"Dual-repo v1 (open)","kind":"fail","duration":930,"turns":6,"planLen":0,"p0":false,"p1":false,"p2":false,"refusal":false,"hostEmitted":false,"cites":"none","peakLike":101938,"inputTokens":35024,"outputTokens":661,"note":"Open dual-tree exploration bloated to ~101k input tokens. Persist/Externalize path then empty MLX response (no_visible_content). Product limit, not model intelligence.","snippet":""},{"id":"dual_v2","name":"Dual-repo v2 (tool-capped)","kind":"pass","duration":240,"turns":5,"planLen":7579,"p0":true,"p1":true,"p2":true,"refusal":false,"hostEmitted":false,"cites":"Orca + Hermes","peakLike":74668,"inputTokens":45614,"outputTokens":2410,"note":"Hard max 6 tools + synthesize. Pass in 4 minutes with both trees cited and ranked migration plan.","snippet":"I'll explore both repos quickly with minimal tool calls, then synthesize.    Hermes2 is a Python/TypeScript project (no `Sources/` dir). Let me find its core modules and read key files from both repos.  I have enough from the evidence pack and the Hermes2 tree listing to synthesize. Let me do one more targeted read of Hermes2's core state module, then write the plan.    Now let me read the Orca co"}],"recommendations":["Do NOT raise safe_context first \u2014 pad 24k already peaked ~26k with quality=1.0; the limiter is first-try phase hygiene + empty-response under tool bloat, not raw window.","Raise target_input modestly (28672\u219230720) only if you need peak >26k without early Externalize; measure e2e first-try rates.","Invest in post-compaction phase recovery: pad 16k/20k lost phases after compaction with null input tokens (~5 min stalls).","Dual-repo needs hard tool budget (v1 empty at 101k input; v2 tight budget pass in 4 min).","Dogfood audit works well (~5.4 min, full plan) \u2014 single large Rust monorepo is within capability at current budget.","For speed: prefer earlier synthesis / lower tool cap over larger context (pad24 was fastest among high-pressure runs).","Smoothness: empty_response after Externalize-only Persist path is a product bug to harden (retry+force synthesis)."],"orcaPrior":{"name":"Orca single-shot (prior)","turns":6,"planLen":8006,"duration":null,"note":"Prior milestone: ~62k Swift LOC, P0\u2013P2, no refusal, host preflight + tool budget + 1 synthesis gate."}};
+// REPORT_DATA_END
+const fmt = n => n == null || Number.isNaN(+n) ? '—' : new Intl.NumberFormat('en-US').format(Math.round(n));
+const fmtM = s => s == null ? '—' : (s >= 60 ? (s/60).toFixed(1) + 'm' : Math.round(s) + 's');
+const gate0 = DATA.gate0;
+const traj = DATA.trajectories;
+const repos = DATA.largeRepo;
+
+function setView(id){
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === id));
+  document.querySelectorAll('.tab').forEach(t => {
+    const active = t.dataset.view === id;
+    t.classList.toggle('active', active);
+    t.setAttribute('aria-selected', String(active));
+    t.tabIndex = active ? 0 : -1;
+  });
+  if (id === 'overview') { drawLadder(); drawRadar(); drawDurationBars(); }
+  if (id === 'ladder') drawTrajectory();
+  if (id === 'largerepo') { renderRepoCards(); drawRepoCompare(); }
+  location.hash = id === 'overview' ? '' : id;
+}
+const tabs = [...document.querySelectorAll('.tab')];
+tabs.forEach((b,i) => {
+  b.addEventListener('click', () => setView(b.dataset.view));
+  b.addEventListener('keydown', e => {
+    let j; if (e.key==='ArrowRight') j=(i+1)%tabs.length; else if (e.key==='ArrowLeft') j=(i-1+tabs.length)%tabs.length; else if (e.key==='Home') j=0; else if (e.key==='End') j=tabs.length-1; else return;
+    e.preventDefault(); setView(tabs[j].dataset.view); tabs[j].focus();
+  });
+});
+
+function tipBind(host, tip, htmlFor){
+  host.querySelectorAll('.dot, .hbar, .rbar').forEach(el => {
+    el.addEventListener('pointerenter', () => { tip.style.display='block'; tip.innerHTML = htmlFor(el); });
+    el.addEventListener('pointermove', e => {
+      const r = host.getBoundingClientRect();
+      tip.style.left = (e.clientX - r.left + 12) + 'px';
+      tip.style.top = (e.clientY - r.top - 10) + 'px';
+    });
+    el.addEventListener('pointerleave', () => tip.style.display='none');
+  });
+}
+
+function drawLadder(){
+  const host = document.getElementById('ladderChart');
+  const mode = document.getElementById('ladderMode').value;
+  const W=760, H=340, p={l:52,r:52,t:28,b:40};
+  const pads = gate0.map(g => g.pad);
+  const maxPeak = 28000, maxDur = 2000;
+  const x = i => p.l + i * (W-p.l-p.r) / Math.max(1, pads.length-1);
+  const yQ = v => H-p.b - v * (H-p.t-p.b);
+  const yP = v => H-p.b - (v/maxPeak) * (H-p.t-p.b);
+  const yD = v => H-p.b - (v/maxDur) * (H-p.t-p.b);
+  let grid = '';
+  [0,0.25,0.5,0.75,1].forEach(v => {
+    grid += `<line class="gridline" x1="${p.l}" x2="${W-p.r}" y1="${yQ(v)}" y2="${yQ(v)}"/>`;
+    grid += `<text class="chart-label" x="4" y="${yQ(v)+4}">${v===0?'0':v}</text>`;
+  });
+  let labels = pads.map((pad,i) => `<text class="chart-label" text-anchor="middle" x="${x(i)}" y="${H-10}">${(pad/1000)}k</text>`).join('');
+  let paths = '', dots = '';
+  if (mode === 'combo' || mode === 'quality') {
+    const d = gate0.map((g,i) => `${i?'L':'M'}${x(i)} ${yQ(g.quality)}`).join(' ');
+    paths += `<path class="line-quality" d="${d}"/>`;
+    gate0.forEach((g,i) => {
+      dots += `<circle class="dot" data-k="quality" data-i="${i}" data-v="${g.quality}" cx="${x(i)}" cy="${yQ(g.quality)}" r="6" fill="var(--lime)"/>`;
+    });
+  }
+  if (mode === 'combo' || mode === 'peak') {
+    const d = gate0.map((g,i) => `${i?'L':'M'}${x(i)} ${yP(g.peak_prompt)}`).join(' ');
+    paths += `<path class="line-peak" d="${d}"/>`;
+    gate0.forEach((g,i) => {
+      dots += `<circle class="dot" data-k="peak" data-i="${i}" data-v="${g.peak_prompt}" cx="${x(i)}" cy="${yP(g.peak_prompt)}" r="5" fill="var(--amber)"/>`;
+    });
+  }
+  if (mode === 'combo') {
+    const d = gate0.map((g,i) => `${i?'L':'M'}${x(i)} ${yD(g.duration_s)}`).join(' ');
+    paths += `<path class="line-dur" d="${d}"/>`;
+    gate0.forEach((g,i) => {
+      dots += `<circle class="dot" data-k="duration" data-i="${i}" data-v="${g.duration_s}" cx="${x(i)}" cy="${yD(g.duration_s)}" r="4" fill="var(--blue)"/>`;
+    });
+  }
+  // budget pressure line
+  if (mode !== 'quality') {
+    const by = yP(DATA.config.budget_pressure_tokens_observed || 24576);
+    paths += `<line x1="${p.l}" x2="${W-p.r}" y1="${by}" y2="${by}" stroke="var(--red)" stroke-width="1" stroke-dasharray="3 4" opacity=".7"/>`;
+    paths += `<text class="chart-label" x="${W-p.r-4}" y="${by-6}" text-anchor="end" fill="var(--red)">budget pressure</text>`;
+  }
+  host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Pad ladder chart">${grid}<line class="axis" x1="${p.l}" x2="${W-p.r}" y1="${H-p.b}" y2="${H-p.b}"/>${labels}${paths}${dots}</svg><div class="tooltip"></div>`;
+  const tip = host.querySelector('.tooltip');
+  tipBind(host, tip, el => {
+    const g = gate0[+el.dataset.i];
+    const k = el.dataset.k;
+    const val = k==='quality' ? (+el.dataset.v).toFixed(2) : k==='duration' ? fmtM(+el.dataset.v) : fmt(+el.dataset.v);
+    return `Pad ${fmt(g.pad)}<br>${k}: ${val}<br>records ${g.exact_records}/28 · phases ${g.phases_matched}/7`;
+  });
+}
+document.getElementById('ladderMode').addEventListener('change', drawLadder);
+
+function drawRadar(){
+  // axes: recall, smoothness, quality, speed — scored 0-1 from campaign
+  const scores = {
+    recall: 1.0,          // pad24 28/28
+    smoothness: 0.45,     // empty response + compaction stalls
+    quality: 0.85,        // dogfood + dual v2 + pad24
+    speed: 0.7,           // pad24 fast, dual v2 fast, pad20 slow
+    headroom: 0.55,       // peak 26k under 32k hard, room to grow carefully
+  };
+  const labels = ['Recall','Smoothness','Quality','Speed','Headroom'];
+  const keys = ['recall','smoothness','quality','speed','headroom'];
+  const host = document.getElementById('radarChart');
+  const W=420, H=320, cx=W/2, cy=H/2+6, R=110;
+  const n = keys.length;
+  const ang = i => -Math.PI/2 + i*2*Math.PI/n;
+  const pt = (i,v) => [cx + Math.cos(ang(i))*R*v, cy + Math.sin(ang(i))*R*v];
+  let rings = '';
+  [0.25,0.5,0.75,1].forEach(r => {
+    let d = keys.map((_,i) => {const [x,y]=pt(i,r); return `${i?'L':'M'}${x} ${y}`;}).join(' ') + ' Z';
+    rings += `<path d="${d}" fill="none" stroke="#262c30" stroke-width="1"/>`;
+  });
+  let axes = keys.map((_,i) => {
+    const [x,y]=pt(i,1);
+    return `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#333a3f" stroke-width="1"/>`;
+  }).join('');
+  let poly = keys.map((k,i) => {const [x,y]=pt(i, scores[k]); return `${i?'L':'M'}${x} ${y}`;}).join(' ') + ' Z';
+  let dots = keys.map((k,i) => {
+    const [x,y]=pt(i, scores[k]);
+    return `<circle class="dot" data-label="${labels[i]}" data-v="${scores[k]}" cx="${x}" cy="${y}" r="5" fill="var(--lime)"/>`;
+  }).join('');
+  let lab = labels.map((lb,i) => {
+    const [x,y]=pt(i, 1.18);
+    return `<text class="chart-label" text-anchor="middle" x="${x}" y="${y+4}">${lb}</text>`;
+  }).join('');
+  host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Capability radar">${rings}${axes}<path d="${poly}" fill="#b7f36b22" stroke="var(--lime)" stroke-width="2"/>${dots}${lab}</svg><div class="tooltip"></div>`;
+  const tip = host.querySelector('.tooltip');
+  tipBind(host, tip, el => `${el.dataset.label}<br>score ${(+el.dataset.v).toFixed(2)}`);
+}
+
+function drawDurationBars(){
+  const host = document.getElementById('durationBars');
+  const rows = [
+    ...gate0.map(g => ({name: `pad ${(g.pad/1000)}k`, s: g.duration_s, ok: g.quality >= 0.99})),
+    {name: 'dogfood', s: DATA.largeRepo[0].duration, ok: true},
+    {name: 'dual v1', s: DATA.largeRepo[1].duration, ok: false},
+    {name: 'dual v2', s: DATA.largeRepo[2].duration, ok: true},
+  ];
+  const W=760, H=300, p={l:90, r:40, t:16, b:24};
+  const max = Math.max(...rows.map(r => r.s));
+  const rowH = (H-p.t-p.b) / rows.length;
+  let svg = '';
+  rows.forEach((r,i) => {
+    const y = p.t + i*rowH + rowH*0.2;
+    const w = (r.s/max) * (W-p.l-p.r);
+    const col = r.ok ? 'var(--lime)' : 'var(--amber)';
+    svg += `<text class="chart-label" text-anchor="end" x="${p.l-10}" y="${y+14}">${r.name}</text>`;
+    svg += `<rect x="${p.l}" y="${y}" width="${W-p.l-p.r}" height="22" rx="4" fill="#252b2f"/>`;
+    svg += `<rect class="hbar" data-name="${r.name}" data-s="${r.s}" x="${p.l}" y="${y}" width="${w}" height="22" rx="4" fill="${col}"/>`;
+    svg += `<text class="chart-label" x="${p.l+w+8}" y="${y+15}">${fmtM(r.s)}</text>`;
+  });
+  host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Duration bars">${svg}</svg><div class="tooltip"></div>`;
+  const tip = host.querySelector('.tooltip');
+  tipBind(host, tip, el => `${el.dataset.name}<br>${fmtM(+el.dataset.s)} (${fmt(+el.dataset.s)}s)`);
+}
+
+function drawTrajectory(){
+  const key = document.getElementById('trajSelect').value;
+  const data = traj[key] || [];
+  const host = document.getElementById('trajectory');
+  const W=760, H=340, p={l:54, r:20, t:24, b:40};
+  const max = 28000;
+  const n = Math.max(1, data.length-1);
+  const x = i => p.l + (i) * (W-p.l-p.r) / n;
+  const y = v => {
+    if (v == null) return null;
+    return H-p.b - (v/max) * (H-p.t-p.b);
+  };
+  let grid = '';
+  [0,8192,16384,24576].forEach(v => {
+    grid += `<line class="gridline" x1="${p.l}" x2="${W-p.r}" y1="${y(v)}" y2="${y(v)}"/>`;
+    grid += `<text class="chart-label" x="2" y="${y(v)+4}">${v===0?'0':Math.round(v/1024)+'K'}</text>`;
+  });
+  // budget line
+  const by = y(DATA.config.budget_pressure_tokens_observed || 24576);
+  grid += `<line x1="${p.l}" x2="${W-p.r}" y1="${by}" y2="${by}" stroke="var(--red)" stroke-width="1" stroke-dasharray="3 4" opacity=".75"/>`;
+  let labels = data.map((d,i) => {
+    const lab = d.kind === 'final' ? 'final' : 'P'+d.i;
+    return `<text class="chart-label" text-anchor="middle" x="${x(i)}" y="${H-12}">${lab}</text>`;
+  }).join('');
+  function pathFor(key){
+    let s = '', started = false;
+    data.forEach((d,i) => {
+      const yy = y(d[key]);
+      if (yy == null) { started = false; return; }
+      s += (started ? 'L' : 'M') + x(i) + ' ' + yy + ' ';
+      started = true;
+    });
+    return s;
+  }
+  let dots = '';
+  data.forEach((d,i) => {
+    [['input','var(--lime)'],['request','var(--purple)'],['cache','var(--blue)']].forEach(([k,c]) => {
+      const yy = y(d[k]);
+      if (yy == null) return;
+      dots += `<circle class="dot" data-turn="${d.i}" data-kind="${k}" data-value="${d[k]}" cx="${x(i)}" cy="${yy}" r="5" fill="${c}"/>`;
+    });
+  });
+  host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Token trajectory">${grid}<line class="axis" x1="${p.l}" x2="${W-p.r}" y1="${H-p.b}" y2="${H-p.b}"/>${labels}<path class="line-input" d="${pathFor('input')}"/><path class="line-req" d="${pathFor('request')}"/><path class="line-cache" d="${pathFor('cache')}"/>${dots}</svg><div class="tooltip"></div>`;
+  const tip = host.querySelector('.tooltip');
+  tipBind(host, tip, el => `Turn ${el.dataset.turn}<br>${el.dataset.kind}: ${fmt(+el.dataset.value)}`);
+}
+document.getElementById('trajSelect').addEventListener('change', drawTrajectory);
+
+function renderLadderTable(){
+  document.getElementById('ladderRows').innerHTML = gate0.map((g,i) => {
+    const ok = g.quality >= 0.99;
+    return `<tr><td><button class="row-action" data-i="${i}" aria-expanded="false"><strong>Pad ${fmt(g.pad)}</strong></button></td>
+      <td><div class="bar ${ok?'':'amber'}"><span style="width:${g.quality*100}%"></span></div> <span class="mono">${g.quality.toFixed(2)}</span></td>
+      <td class="mono">${g.exact_records}/28</td>
+      <td class="mono">${g.phases_matched}/7</td>
+      <td>${g.strict_success?'<span class="good">yes</span>':'<span class="warn">no</span>'}</td>
+      <td>${g.end_to_end_success?'<span class="good">yes</span>':'<span class="warn">no</span>'}</td>
+      <td class="mono">${fmt(g.peak_prompt)}</td>
+      <td><span class="tag ${g.rotation_strict?'ok':'fail'}">${g.rotation_required?'req':'opt'} · ${g.rotation_strict?'ok':'—'}</span></td>
+      <td class="mono">${fmtM(g.duration_s)}</td></tr>`;
+  }).join('');
+  document.querySelectorAll('#ladderRows .row-action').forEach(b => b.addEventListener('click', () => showLadder(+b.dataset.i)));
+}
+function showLadder(i){
+  const g = gate0[i];
+  const d = document.getElementById('ladderDetail');
+  d.classList.add('open');
+  d.innerHTML = `<div class="panel-title"><h3>Pad ${fmt(g.pad)}</h3><span class="tag ${g.quality>=0.99?'ok':'fail'}">quality ${g.quality.toFixed(2)}</span></div>
+    <p style="color:var(--muted);line-height:1.55">Rotation reason: <span class="mono">${g.rotation_reason || 'required (pressure)'}</span>. Compactions: ${g.compactions}. API calls: ${g.api_calls}. Peak request: ${fmt(g.peak_request)}.</p>
+    <div class="detail-grid">
+      <div><span>Exact records</span><strong>${g.exact_records}/28</strong></div>
+      <div><span>Phases matched</span><strong>${g.phases_matched}/7</strong></div>
+      <div><span>Duration</span><strong>${fmtM(g.duration_s)}</strong></div>
+      <div><span>Strict recall</span><strong>${g.strict_success}</strong></div>
+      <div><span>E2E</span><strong>${g.end_to_end_success}</strong></div>
+      <div><span>First-try tool strict</span><strong>${g.per_phase_first_try}</strong></div>
+    </div>`;
+  document.getElementById('trajSelect').value = 'pad' + g.pad;
+  drawTrajectory();
+}
+
+function renderRepoCards(){
+  const host = document.getElementById('repoCards');
+  host.innerHTML = repos.map(r => {
+    const st = r.kind === 'pass' ? 'pass' : 'fail';
+    return `<article class="panel">
+      <div class="panel-title"><h3>${r.name}</h3><span class="status ${st}">${r.kind}</span></div>
+      <p style="color:var(--muted);font-size:14px;line-height:1.45;min-height:64px">${r.note}</p>
+      <div class="detail-grid" style="margin-top:12px">
+        <div><span>Turns</span><strong>${r.turns ?? '—'}</strong></div>
+        <div><span>Duration</span><strong>${fmtM(r.duration)}</strong></div>
+        <div><span>Plan chars</span><strong>${fmt(r.planLen)}</strong></div>
+      </div>
+    </article>`;
+  }).join('');
+}
+
+function drawRepoCompare(){
+  const host = document.getElementById('repoCompare');
+  const W=760, H=280, p={l:100,r:30,t:20,b:30};
+  const metrics = [
+    {key:'duration', label:'Duration (s)', max:1000, get:r=>r.duration},
+    {key:'turns', label:'Turns', max:10, get:r=>r.turns||0},
+    {key:'plan', label:'Plan length', max:12000, get:r=>r.planLen||0},
+  ];
+  // grouped bars per repo for duration
+  const max = Math.max(...repos.map(r => r.duration), 1);
+  const groupW = (W-p.l-p.r) / repos.length;
+  let svg = '';
+  repos.forEach((r,i) => {
+    const x0 = p.l + i*groupW + groupW*0.15;
+    const bw = groupW*0.7;
+    const h = (r.duration/max) * (H-p.t-p.b);
+    const y = H-p.b-h;
+    const col = r.kind==='pass' ? 'var(--lime)' : 'var(--amber)';
+    svg += `<rect class="rbar" data-id="${r.id}" data-s="${r.duration}" x="${x0}" y="${y}" width="${bw}" height="${h}" rx="6" fill="${col}"/>`;
+    svg += `<text class="chart-label" text-anchor="middle" x="${x0+bw/2}" y="${H-10}">${r.name.replace('Dual-repo ','D ').replace(' monorepo audit','')}</text>`;
+    svg += `<text class="chart-label" text-anchor="middle" x="${x0+bw/2}" y="${y-8}">${fmtM(r.duration)}</text>`;
+  });
+  host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Repo duration compare">${svg}</svg><div class="tooltip"></div>`;
+  const tip = host.querySelector('.tooltip');
+  tipBind(host, tip, el => {
+    const r = repos.find(x => x.id === el.dataset.id);
+    return `${r.name}<br>${fmtM(r.duration)} · turns ${r.turns} · plan ${fmt(r.planLen)}`;
+  });
+}
+
+function renderRepoTable(){
+  document.getElementById('repoRows').innerHTML = repos.map(r => `<tr>
+    <td><button class="row-action" data-id="${r.id}"><strong>${r.name}</strong></button></td>
+    <td><span class="tag ${r.kind==='pass'?'ok':'bad'}">${r.kind}</span></td>
+    <td class="mono">${r.turns ?? '—'}</td>
+    <td class="mono">${fmt(r.planLen)}</td>
+    <td class="mono">${fmt(r.inputTokens)}</td>
+    <td class="mono">${fmt(r.outputTokens)}</td>
+    <td class="mono">${fmtM(r.duration)}</td>
+  </tr>`).join('');
+  document.querySelectorAll('#repoRows .row-action').forEach(b => b.addEventListener('click', () => showRepo(b.dataset.id)));
+}
+function showRepo(id){
+  const r = repos.find(x => x.id === id);
+  const d = document.getElementById('repoDetail');
+  d.classList.add('open');
+  d.innerHTML = `<div class="panel-title"><h3>${r.name}</h3><span class="tag ${r.kind==='pass'?'ok':'bad'}">${r.kind}</span></div>
+    <p style="color:var(--muted);line-height:1.55">${r.note}</p>
+    ${r.snippet ? `<p style="margin-top:12px;color:var(--dim);font:12px/1.5 var(--mono)">${r.snippet}…</p>` : ''}
+    <div class="detail-grid" style="margin-top:12px">
+      <div><span>P0 / P1 / P2</span><strong>${r.p0?'✓':'–'} / ${r.p1?'✓':'–'} / ${r.p2?'✓':'–'}</strong></div>
+      <div><span>Cites</span><strong>${r.cites}</strong></div>
+      <div><span>Total tokens</span><strong>${fmt(r.peakLike)}</strong></div>
+    </div>`;
+}
+
+function renderConfig(){
+  const c = DATA.config;
+  document.getElementById('configGrid').innerHTML = [
+    ['safe_context', c.safe_context_tokens],
+    ['safe_input', c.safe_input_tokens],
+    ['target_input', c.target_input_tokens],
+    ['budget pressure', c.budget_pressure_tokens_observed],
+    ['hard_refuse', c.hard_refuse],
+    ['audit completion', c.local_qwen_audit_completion],
+  ].map(([k,v]) => `<div><span>${k}</span><strong class="mono">${v}</strong></div>`).join('');
+}
+function renderRecs(){
+  document.getElementById('recList').innerHTML = DATA.recommendations.map((t,i) =>
+    `<div class="rec"><div class="n">0${i+1}</div><p>${t}</p></div>`).join('');
+}
+
+renderLadderTable();
+renderRepoTable();
+renderConfig();
+renderRecs();
+drawLadder();
+drawRadar();
+drawDurationBars();
+drawTrajectory();
+renderRepoCards();
+drawRepoCompare();
+
+const initial = location.hash.slice(1);
+if (['overview','ladder','largerepo','knobs'].includes(initial)) setView(initial);
+</script>
+</body>
+</html>

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Recipe · Mac32 Qwen 35B · Context engine ON — How To Silicon</title>
+  <link rel="stylesheet" href="../styles.css" />
+</head>
+<body>
+  <main class="prose">
+    <a class="back" href="../index.html">← How To Silicon</a>
+    <p class="eyebrow">Daily driver · 32 GB Apple Silicon</p>
+    <h1>Qwen3.6 35B-A3B-4bit + Ferroclaw context engine ON</h1>
+    <p>
+      Serve a long-horizon coding agent on one Mac with ~32 GB unified memory.
+      Weights (~19 GB) leave ~7–8 GB for KV. The engine keeps usable input under
+      ~8k tokens by externalizing tool bulk to disk and packing history turn-safely.
+    </p>
+
+    <h2>Measured</h2>
+    <ul>
+      <li>Multiturn tool-bulk prompt: <strong>6 889</strong> tokens (~23 s wall)</li>
+      <li>Same seed engine OFF: 35 250 tokens (~129 s) → <strong>5.12× / 5.7×</strong></li>
+      <li>Mid-file fact recovery from capsules: <strong>100%</strong></li>
+      <li>Peak residency (typical): approach ~21 GB before pressure scale / quarantine</li>
+    </ul>
+
+    <h2>Stack</h2>
+    <ul>
+      <li>Model: <code>mlx-community/Qwen3.6-35B-A3B-4bit</code></li>
+      <li>Server: <code>python -m hermes_context_memory.local_qwen</code> on <code>:8080</code></li>
+      <li>Harness: Ferroclaw <code>[context_memory] profile = "mac32"</code></li>
+      <li>Tools: unlimited lifetime (<code>max_tool_calls_total = 0</code>)</li>
+    </ul>
+
+    <h2>Config skeleton</h2>
+    <pre>[agent]
+default_model = "mlx-community/Qwen3.6-35B-A3B-4bit"
+max_iterations = 500
+token_budget = 500000
+max_tool_calls_per_iteration = 12
+max_tool_calls_total = 0
+
+[providers.openai]
+base_url = "http://127.0.0.1:8080/v1"
+api_key_env = "OPENAI_API_KEY"
+max_tokens = 4096
+
+[context_memory]
+enabled = true
+profile = "mac32"
+hard_local_budget = true
+safe_context_tokens = 10240
+safe_input_tokens = 7680
+target_input_tokens = 6400
+output_reserve_tokens = 1024
+tool_reserve_tokens = 1024
+externalize_tool_results_over_tokens = 800</pre>
+
+    <h2>Start</h2>
+    <pre># Terminal A — MLX
+export PYTHONPATH=~/Desktop/hermes-context-memory-main
+~/venvs/mlx/bin/python -m hermes_context_memory.local_qwen \
+  --model ~/models/huggingface/hub/models--mlx-community--Qwen3.6-35B-A3B-4bit/snapshots/... \
+  --python ~/venvs/mlx/bin/python --port 8080
+
+# Terminal B — agent
+export OPENAI_API_KEY=local
+export FERROCLAW_HEADLESS=1   # optional
+ferroclaw exec "your long task"</pre>
+
+    <h2>Why ON is the daily driver</h2>
+    <p>
+      Context is a cache. Disk holds evidence capsules and task state. Progressive
+      completion steers finish audits without PARTIAL / tool-budget tombstones.
+      Engine OFF is a control arm only.
+    </p>
+  </main>
+</body>
+</html>
